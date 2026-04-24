@@ -4617,7 +4617,7 @@ setInterval(updateProdTimeDates, 60000);
     
     // Vent til DOM er klar og upload-området eksisterer
     const tryCreateUI = () => {
-      if (document.querySelector('div')?.textContent.includes('Træk dtf-config.txt')) {
+     if (Array.from(document.querySelectorAll('div')).some(d => d.textContent.includes('Træk dtf-config.txt'))) {
         createConfigUI();
       } else {
         setTimeout(tryCreateUI, 500);
