@@ -4253,5 +4253,387 @@ updateProdTimeDates();
 // Opdatér datoer hvert minut (crossing cutoff time)
 setInterval(updateProdTimeDates, 60000);
 </script>
+  <!-- ========================================
+     DTF PERMANENT CONFIG STORAGE v1.0
+     Skal tilføjes i index.html FØR </body>
+     ========================================-->
+
+<script>
+(function() {
+  'use strict';
+  
+  // ===== SUPABASE KONFIGURATION =====
+  const SUPABASE_URL = 'https://vumyufckkdeeszxvmyjb.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_iqw0lJmj5PJzehF-Rp1l5w_t8Vs27mv';
+  
+  // ===== INITIALISER SUPABASE CLIENT =====
+  let sbClient = null;
+  
+  function initSupabase() {
+    if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
+      sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      console.log('✅ DTF Config Storage: Supabase client initialiseret');
+      return true;
+    }
+    console.warn('⚠️ DTF Config Storage: Supabase library ikke fundet');
+    return false;
+  }
+  
+  // ===== STORAGE API =====
+  window.DTFConfigStorage = {
+    
+    async save(name, configData) {
+      if (!sbClient && !initSupabase()) {
+        throw new Error('Supabase ikke tilgængelig');
+      }
+      
+      const { data, error } = await sbClient
+        .from('dtf_configs')
+        .upsert({
+          name: name,
+          config_data: configData,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'name' })
+        .select();
+      
+      if (error) throw error;
+      return data;
+    },
+    
+    async load(name) {
+      if (!sbClient && !initSupabase()) {
+        throw new Error('Supabase ikke tilgængelig');
+      }
+      
+      const { data, error } = await sbClient
+        .from('dtf_configs')
+        .select('config_data')
+        .eq('name', name)
+        .single();
+      
+      if (error) throw error;
+      return data?.config_data;
+    },
+    
+    async list() {
+      if (!sbClient && !initSupabase()) {
+        throw new Error('Supabase ikke tilgængelig');
+      }
+      
+      const { data, error } = await sbClient
+        .from('dtf_configs')
+        .select('name, updated_at, created_at')
+        .order('updated_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    
+    async delete(name) {
+      if (!sbClient && !initSupabase()) {
+        throw new Error('Supabase ikke tilgængelig');
+      }
+      
+      const { error } = await sbClient
+        .from('dtf_configs')
+        .delete()
+        .eq('name', name);
+      
+      if (error) throw error;
+      return true;
+    }
+  };
+  
+  // ===== UI KOMPONENT =====
+  function createConfigUI() {
+    // Find upload-området (hvor "Træk dtf-config.txt hertil" er)
+    let targetArea = null;
+    const allDivs = document.querySelectorAll('div');
+    for (const div of allDivs) {
+      const text = div.textContent || '';
+      if (text.includes('Træk dtf-config.txt') && div.children.length < 5) {
+        targetArea = div.parentElement;
+        break;
+      }
+    }
+    
+    if (!targetArea) {
+      console.warn('⚠️ DTF Config Storage: Kunne ikke finde upload-område');
+      return;
+    }
+    
+    // Undgå dobbelt-installation
+    if (document.getElementById('dtf-config-storage-panel')) return;
+    
+    const panel = document.createElement('div');
+    panel.id = 'dtf-config-storage-panel';
+    panel.innerHTML = `
+      <div style="
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 16px 0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        font-family: inherit;
+      ">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+          <span style="font-size: 18px;">💾</span>
+          <h4 style="margin: 0; font-size: 15px; font-weight: 600;">Gemte Konfigurationer</h4>
+          <span id="dtf-storage-status" style="
+            background: rgba(255,255,255,0.2); 
+            padding: 2px 8px; 
+            border-radius: 10px; 
+            font-size: 11px;
+            margin-left: auto;
+          ">Forbinder...</span>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px;">
+          <input 
+            type="text" 
+            id="dtf-config-name" 
+            placeholder="Navn på config (f.eks. Standard)" 
+            style="
+              padding: 8px 10px; 
+              border: none; 
+              border-radius: 4px; 
+              font-size: 13px;
+              color: #333;
+            "
+          >
+          <button id="dtf-save-config" style="
+            background: #16a34a; 
+            color: white; 
+            border: none; 
+            padding: 8px 14px; 
+            border-radius: 4px; 
+            font-size: 13px; 
+            font-weight: 500; 
+            cursor: pointer;
+            white-space: nowrap;
+          ">💾 Gem</button>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px;">
+          <select id="dtf-config-list" style="
+            padding: 8px 10px; 
+            border: none; 
+            border-radius: 4px; 
+            font-size: 13px;
+            color: #333;
+          ">
+            <option value="">-- Vælg gemt config --</option>
+          </select>
+          <button id="dtf-load-config" style="
+            background: #2563eb; 
+            color: white; 
+            border: none; 
+            padding: 8px 14px; 
+            border-radius: 4px; 
+            font-size: 13px; 
+            cursor: pointer;
+          ">📂 Indlæs</button>
+          <button id="dtf-delete-config" style="
+            background: #dc2626; 
+            color: white; 
+            border: none; 
+            padding: 8px 14px; 
+            border-radius: 4px; 
+            font-size: 13px; 
+            cursor: pointer;
+          ">🗑️</button>
+        </div>
+        
+        <div id="dtf-config-message" style="
+          margin-top: 10px; 
+          padding: 8px 12px; 
+          border-radius: 4px; 
+          font-size: 12px; 
+          display: none;
+        "></div>
+      </div>
+    `;
+    
+    targetArea.insertBefore(panel, targetArea.firstChild);
+    setupEventHandlers();
+    refreshList();
+  }
+  
+  function showMessage(text, type = 'info') {
+    const el = document.getElementById('dtf-config-message');
+    if (!el) return;
+    
+    const styles = {
+      success: 'background: rgba(16,185,129,0.25); color: white; border: 1px solid rgba(16,185,129,0.5);',
+      error: 'background: rgba(239,68,68,0.25); color: white; border: 1px solid rgba(239,68,68,0.5);',
+      info: 'background: rgba(255,255,255,0.15); color: white;'
+    };
+    
+    el.style.cssText = styles[type] + ' padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-top: 10px; display: block;';
+    el.textContent = text;
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+  
+  function updateConnectionStatus(connected) {
+    const el = document.getElementById('dtf-storage-status');
+    if (!el) return;
+    if (connected) {
+      el.textContent = '☁️ Cloud';
+      el.style.background = 'rgba(16,185,129,0.4)';
+    } else {
+      el.textContent = '⚠️ Offline';
+      el.style.background = 'rgba(239,68,68,0.4)';
+    }
+  }
+  
+  async function refreshList() {
+    const select = document.getElementById('dtf-config-list');
+    if (!select) return;
+    
+    try {
+      const configs = await window.DTFConfigStorage.list();
+      
+      while (select.children.length > 1) {
+        select.removeChild(select.lastChild);
+      }
+      
+      configs.forEach(cfg => {
+        const opt = document.createElement('option');
+        opt.value = cfg.name;
+        const date = new Date(cfg.updated_at).toLocaleDateString('da-DK');
+        opt.textContent = `${cfg.name} (opdateret ${date})`;
+        select.appendChild(opt);
+      });
+      
+      updateConnectionStatus(true);
+    } catch (e) {
+      console.error('❌ Fejl ved hentning af configs:', e);
+      updateConnectionStatus(false);
+    }
+  }
+  
+  // ===== CONFIG EXTRACTION =====
+  // OBS: Disse funktioner skal tilpasses dit eksisterende DTF config system
+  function getCurrentConfig() {
+    // Prøv at finde eksisterende config-objekt i systemet
+    if (typeof window.dtfConfig !== 'undefined') return window.dtfConfig;
+    if (typeof window.CONFIG !== 'undefined') return window.CONFIG;
+    if (typeof window.config !== 'undefined') return window.config;
+    
+    // Fallback: Indsaml fra formular-felter
+    const config = {
+      version: '1.050',
+      timestamp: new Date().toISOString(),
+      fields: {}
+    };
+    
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      if (el.id || el.name) {
+        const key = el.id || el.name;
+        config.fields[key] = el.value;
+      }
+    });
+    
+    return config;
+  }
+  
+  function applyConfig(configData) {
+    if (!configData) return;
+    
+    // Hvis DTF systemet har en indlæsnings-funktion, brug den
+    if (typeof window.loadDtfConfig === 'function') {
+      window.loadDtfConfig(configData);
+      return;
+    }
+    
+    // Fallback: Sæt formular-felter
+    if (configData.fields) {
+      Object.entries(configData.fields).forEach(([key, value]) => {
+        const el = document.getElementById(key) || document.querySelector(`[name="${key}"]`);
+        if (el) el.value = value;
+      });
+    }
+  }
+  
+  // ===== EVENT HANDLERS =====
+  function setupEventHandlers() {
+    document.getElementById('dtf-save-config')?.addEventListener('click', async () => {
+      const name = document.getElementById('dtf-config-name').value.trim();
+      if (!name) {
+        showMessage('Indtast et navn til konfigurationen', 'error');
+        return;
+      }
+      
+      try {
+        const config = getCurrentConfig();
+        await window.DTFConfigStorage.save(name, config);
+        showMessage(`✅ "${name}" gemt i cloud!`, 'success');
+        document.getElementById('dtf-config-name').value = '';
+        await refreshList();
+      } catch (e) {
+        showMessage('Fejl: ' + e.message, 'error');
+      }
+    });
+    
+    document.getElementById('dtf-load-config')?.addEventListener('click', async () => {
+      const name = document.getElementById('dtf-config-list').value;
+      if (!name) {
+        showMessage('Vælg en config at indlæse', 'error');
+        return;
+      }
+      
+      try {
+        const config = await window.DTFConfigStorage.load(name);
+        applyConfig(config);
+        showMessage(`✅ "${name}" indlæst!`, 'success');
+      } catch (e) {
+        showMessage('Fejl: ' + e.message, 'error');
+      }
+    });
+    
+    document.getElementById('dtf-delete-config')?.addEventListener('click', async () => {
+      const name = document.getElementById('dtf-config-list').value;
+      if (!name) {
+        showMessage('Vælg en config at slette', 'error');
+        return;
+      }
+      
+      if (!confirm(`Slet config "${name}" permanent?`)) return;
+      
+      try {
+        await window.DTFConfigStorage.delete(name);
+        showMessage(`✅ "${name}" slettet`, 'success');
+        await refreshList();
+      } catch (e) {
+        showMessage('Fejl: ' + e.message, 'error');
+      }
+    });
+  }
+  
+  // ===== INIT =====
+  function init() {
+    initSupabase();
+    
+    // Vent til DOM er klar og upload-området eksisterer
+    const tryCreateUI = () => {
+      if (document.querySelector('div')?.textContent.includes('Træk dtf-config.txt')) {
+        createConfigUI();
+      } else {
+        setTimeout(tryCreateUI, 500);
+      }
+    };
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', tryCreateUI);
+    } else {
+      tryCreateUI();
+    }
+  }
+  
+  init();
+})();
+</script>
+
 </body>
 </html>
