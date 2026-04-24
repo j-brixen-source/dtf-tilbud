@@ -4455,7 +4455,7 @@ setInterval(updateProdTimeDates, 60000);
       </div>
     `;
     
-    targetArea.insertBefore(panel, targetArea.firstChild);
+    const dropCard = document.getElementById('configDropCard'); if (dropCard && dropCard.parentElement) { const wrapper = document.createElement('div'); wrapper.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch;margin-bottom:16px;'; dropCard.parentElement.insertBefore(wrapper, dropCard); wrapper.appendChild(dropCard); wrapper.appendChild(panel); dropCard.style.margin = '0'; panel.style.margin = '0'; const inner = panel.firstElementChild; if (inner) { inner.style.margin = '0'; inner.style.height = '100%'; inner.style.boxSizing = 'border-box'; } } else { targetArea.insertBefore(panel, targetArea.firstChild); }
     setupEventHandlers();
     refreshList();
   }
