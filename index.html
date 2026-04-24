@@ -4515,46 +4515,73 @@ setInterval(updateProdTimeDates, 60000);
   
   // ===== CONFIG EXTRACTION =====
   // OBS: Disse funktioner skal tilpasses dit eksisterende DTF config system
-  function getCurrentConfig() {
-    // Prøv at finde eksisterende config-objekt i systemet
-    if (typeof window.dtfConfig !== 'undefined') return window.dtfConfig;
-    if (typeof window.CONFIG !== 'undefined') return window.CONFIG;
-    if (typeof window.config !== 'undefined') return window.config;
-    
-    // Fallback: Indsaml fra formular-felter
-    const config = {
-      version: '1.050',
-      timestamp: new Date().toISOString(),
-      fields: {}
-    };
-    
-    document.querySelectorAll('input, select, textarea').forEach(el => {
-      if (el.id || el.name) {
-        const key = el.id || el.name;
-        config.fields[key] = el.value;
-      }
-    });
-    
-    return config;
-  }
-  
-  function applyConfig(configData) {
-    if (!configData) return;
-    
-    // Hvis DTF systemet har en indlæsnings-funktion, brug den
-    if (typeof window.loadDtfConfig === 'function') {
-      window.loadDtfConfig(configData);
-      return;
-    }
-    
-    // Fallback: Sæt formular-felter
-    if (configData.fields) {
-      Object.entries(configData.fields).forEach(([key, value]) => {
-        const el = document.getElementById(key) || document.querySelector(`[name="${key}"]`);
-        if (el) el.value = value;
+    function getCurrentConfig() {
+      const cfg = {
+        _meta: { version: DTF_VERSION, timestamp: new Date().toISOString() }
+      };
+      
+      // Alle felter som dtf-config.txt bruger
+      const fieldMap = {
+        ANTHROPIC_KEY:    'anthropic_key',
+        SS_USER:          'ss_user',
+        SS_PASSWORD:      'ss_pass',
+        SUPABASE_URL:     'sb_url_input',
+        SUPABASE_KEY:     'sb_key_input',
+        EUR_DKK_KURS:     'eur_dkk',
+        MARKUP_0_49:      'mu_low',
+        MARKUP_50_100:    'mu_mid',
+        MARKUP_100_PLUS:  'mu_high'
+      };
+      
+      Object.entries(fieldMap).forEach(function(entry) {
+        const key = entry[0];
+        const id = entry[1];
+        const el = document.getElementById(id);
+        if (el && el.value) cfg[key] = el.value;
       });
+      
+      // Firma info og prodtime fra localStorage
+      const lsKeys = [
+        'firma_navn', 'firma_cvr', 'firma_email', 'firma_telefon', 
+        'firma_adresse', 'firma_website',
+        'prodtime_standard_dage', 'prodtime_standard_fee', 'prodtime_standard_pct',
+        'prodtime_express_dage', 'prodtime_express_fee', 'prodtime_express_pct',
+        'prodtime_superexpress_dage', 'prodtime_superexpress_fee', 'prodtime_superexpress_pct',
+        'prodtime_cutoff_hour'
+      ];
+      lsKeys.forEach(function(k) {
+        const v = localStorage.getItem(k);
+        if (v) cfg[k.toUpperCase()] = v;
+      });
+      
+      return cfg;
     }
-  }
+    
+    function applyConfig(configData) {
+      if (!configData) return;
+      
+      try {
+        // Byg config.txt-format tekst fra de gemte nøgler
+        let configText = '# DTF config loaded from cloud\n';
+        Object.entries(configData).forEach(function(entry) {
+          const key = entry[0];
+          const value = entry[1];
+          if (key === '_meta' || key === 'version' || key === 'timestamp' || key === 'fields') return;
+          if (value) configText += key + '=' + value + '\n';
+        });
+        
+        // Opret File-objekt der efterligner upload
+        const blob = new Blob([configText], { type: 'text/plain' });
+        const file = new File([blob], 'cloud-config.txt', { type: 'text/plain' });
+        
+        // Genbrug DTF-systemets egen parseConfigFile - den kalder initSupabase, osv.
+        if (typeof parseConfigFile === 'function') {
+          parseConfigFile(file);
+        }
+      } catch(e) {
+        console.error('applyConfig fejl:', e);
+      }
+    }
   
   // ===== EVENT HANDLERS =====
   function setupEventHandlers() {
