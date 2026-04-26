@@ -1,6 +1,19 @@
 [build]
-  functions = "netlify/functions"
   publish = "."
+  command = "echo 'No build required for static site'"
 
-[functions]
-  node_bundler = "esbuild"
+[build.environment]
+  NODE_VERSION = "18"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[context.production]
+  [context.production.environment]
+    SUPABASE_URL = "https://vumyufckkdeeszxvmyjb.supabase.co"
+
+[context.deploy-preview]
+  [context.deploy-preview.environment]
+    SUPABASE_URL = "https://vumyufckkdeeszxvmyjb.supabase.co"
