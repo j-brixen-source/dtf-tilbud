@@ -177,8 +177,7 @@
         const STANLEY_STALLS_API = 'https://api.stanley-stalls.dk/products'; // Placeholder
         
         // Initialize Supabase client
-        const supabase = supabaseCreateClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
+        const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);        
         // Global state
         let lshopData = new Map();
         let stanleyData = new Map();
@@ -237,7 +236,7 @@
             updateLoadingStatus('📊 Fetching L-shop stock data from Supabase...');
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await sbClient
                     .from('lshop_stock')
                     .select('*')
                     .order('last_updated', { ascending: false });
