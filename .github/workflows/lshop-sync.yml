@@ -40,6 +40,34 @@ jobs:
 
           const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
+          // ── Rens URL og key for almindelige copy-paste-fejl ─────────────
+          function cleanEnv(name) {
+            let val = process.env[name] || '';
+            val = val.trim();                    // whitespace, newlines
+            val = val.replace(/^["']|["']$/g, ''); // omsluttende quotes
+            val = val.replace(/\/+$/, '');       // trailing slashes
+            return val;
+          }
+
+          const SUPABASE_URL = cleanEnv('SUPABASE_URL');
+          const SUPABASE_KEY = cleanEnv('SUPABASE_KEY');
+
+          // ── Pre-flight validering ───────────────────────────────────────
+          if (!SUPABASE_URL) throw new Error('SUPABASE_URL secret is empty or missing');
+          if (!SUPABASE_KEY) throw new Error('SUPABASE_KEY secret is empty or missing');
+          if (!SUPABASE_URL.startsWith('https://')) {
+            throw new Error(`SUPABASE_URL must start with https:// — got: ${SUPABASE_URL.substring(0, 20)}...`);
+          }
+          if (!SUPABASE_URL.includes('.supabase.co')) {
+            throw new Error(`SUPABASE_URL doesn't look right — got: ${SUPABASE_URL.substring(0, 30)}...`);
+          }
+
+          log(`🔗 Supabase URL: ${SUPABASE_URL.substring(0, 35)}... (length: ${SUPABASE_URL.length})`);
+          log(`🔑 Supabase key: ${SUPABASE_KEY.substring(0, 10)}... (length: ${SUPABASE_KEY.length})`);
+
+          const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+          // ── FTP download ────────────────────────────────────────────────
           async function downloadFromFTP() {
             const client = new ftp.Client(30000);
             client.ftp.verbose = false;
@@ -67,19 +95,17 @@ jobs:
             }
           }
 
-          function parseCSV(filepath) {
-            // Læs filen som UTF-8 og strip BOM eksplicit
+          // ── Parse CSV med BOM-stripping ────────────────────────────────
+          function parseCSV(filepath, syncTime) {
             let content = fs.readFileSync(filepath, 'utf8');
             if (content.charCodeAt(0) === 0xFEFF) {
               content = content.slice(1);
               log('🔧 Stripped UTF-8 BOM from CSV');
             }
 
-            // Split på linjer (håndter både \r\n og \n)
             const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
             if (lines.length < 2) throw new Error('CSV is empty or has only header');
 
-            // Header: article;stock;catalog
             const headers = lines[0].split(';').map(h => h.trim().toLowerCase());
             log(`📋 CSV headers: ${headers.join(', ')}`);
 
@@ -92,7 +118,6 @@ jobs:
             }
 
             const rows = [];
-            const now = new Date().toISOString();
             let dropped = 0;
 
             for (let i = 1; i < lines.length; i++) {
@@ -110,7 +135,7 @@ jobs:
                 article_number: article,
                 catalog_nr:     catalog,
                 stock_qty:      stock,
-                last_updated:   now
+                last_updated:   syncTime
               });
             }
 
@@ -118,23 +143,20 @@ jobs:
             return rows;
           }
 
-          async function uploadToSupabase(rows) {
-            const supabase = createClient(
-              process.env.SUPABASE_URL,
-              process.env.SUPABASE_KEY
-            );
-
-            // Truncate via DELETE (RLS skal tillade det — eller brug service_role)
-            log('🗑️  Clearing old stock data...');
-            const { error: delErr } = await supabase
+          // ── Pre-flight test mod Supabase ────────────────────────────────
+          async function preflightCheck() {
+            log('🔍 Pre-flight: testing Supabase connection...');
+            const { count, error } = await supabase
               .from('lshop_stock')
-              .delete()
-              .neq('article_number', '___never_match___');
-            if (delErr) {
-              log(`⚠️  Delete error: ${delErr.message}`);
+              .select('*', { count: 'exact', head: true });
+            if (error) {
+              throw new Error(`Pre-flight failed — Supabase says: ${error.message}`);
             }
+            log(`✅ Supabase OK. Current row count: ${count ?? 0}`);
+          }
 
-            // Batch insert (1000 ad gangen — Supabase limit)
+          // ── Upsert til Supabase ────────────────────────────────────────
+          async function uploadToSupabase(rows) {
             const batchSize = 1000;
             let inserted = 0;
 
@@ -145,29 +167,49 @@ jobs:
                 .upsert(batch, { onConflict: 'article_number' });
 
               if (error) {
-                log(`❌ Batch ${i}-${i + batch.length} failed: ${error.message}`);
-                throw error;
+                throw new Error(`Batch ${i}-${i + batch.length} failed: ${error.message}`);
               }
               inserted += batch.length;
-              if (i % 10000 === 0) {
+              if (i % 20000 === 0 && i > 0) {
                 log(`   ${inserted}/${rows.length} (${Math.round(inserted/rows.length*100)}%)`);
               }
             }
 
-            log(`🎉 Uploaded ${inserted} rows to lshop_stock`);
+            log(`🎉 Upserted ${inserted} rows`);
             return inserted;
           }
 
+          // ── Slet stale rækker (dem der ikke var med i denne sync) ──────
+          async function cleanupStaleRows(syncTime) {
+            log('🗑️  Removing stale rows (not in current FTP file)...');
+            const { error, count } = await supabase
+              .from('lshop_stock')
+              .delete({ count: 'exact' })
+              .lt('last_updated', syncTime);
+            if (error) {
+              log(`⚠️  Cleanup warning: ${error.message}`);
+            } else {
+              log(`✅ Removed ${count ?? 0} stale rows`);
+            }
+          }
+
+          // ── Main ───────────────────────────────────────────────────────
           (async () => {
             try {
               log('🚀 Starting L-shop stock sync');
+              await preflightCheck();
+
+              const syncTime = new Date().toISOString();
               await downloadFromFTP();
-              const rows = parseCSV('stockfile.csv');
+              const rows = parseCSV('stockfile.csv', syncTime);
+
               const count = await uploadToSupabase(rows);
-              log(`✨ DONE — ${count} rows synced`);
+              await cleanupStaleRows(syncTime);
+
+              log(`✨ DONE — ${count} rows synced at ${syncTime}`);
             } catch (err) {
               console.error(`💥 SYNC FAILED: ${err.message}`);
-              console.error(err.stack);
+              if (err.stack) console.error(err.stack);
               process.exit(1);
             }
           })();
