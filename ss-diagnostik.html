@@ -18,7 +18,7 @@
 </head>
 <body>
 
-<h1>🔬 Stanley Stella API — Diagnostik v2</h1>
+<h1>🔬 Stanley Stella API — Diagnostik v3</h1>
 
 <div class="warn-box">
   <strong>VIGTIGT:</strong> Upload denne fil til repo-roden og kør den fra Netlify-domænet (ikke lokalt fra Mac), ellers blokerer CORS. Åbn fra:<br><br>
@@ -88,8 +88,29 @@ async function diagnose() {
 
     log('📥 Test 2: get_prices...', 'info');
     const priceRes = await callSS('products/get_prices', payload);
+
+    // ALWAYS dump the raw response first - super important for debugging
+    log(`HTTP status: ${priceRes.status}`);
+    dump('🔍 Rå serversvar fra get_prices (første 3000 tegn):', priceRes.rawText);
+
     if (priceRes.parseError) {
-      dump('❌ Pris-response (kunne ikke parses):', priceRes.rawText);
+      log(`<span class="err">JSON parse fejl: ${priceRes.parseError}</span>`, 'err');
+      log('<strong>Workaround forsøg:</strong> Stripper "JSON" prefix...', 'info');
+      // Try various recovery strategies
+      let recoveredText = priceRes.rawText;
+      // Strategi 1: hvis det starter med "JSON" eller "JSON: " eller noget lignende
+      const jsonPrefixMatch = recoveredText.match(/^[^{[]*?([\{\[].*)/s);
+      if (jsonPrefixMatch) {
+        recoveredText = jsonPrefixMatch[1];
+        log(`<span class="info">Fjernede prefix før første { eller [</span>`);
+        try {
+          const parsed = JSON.parse(recoveredText);
+          log(`<span class="ok">✅ Parsing virkede efter prefix-strip!</span>`, 'ok');
+          dump('Recovered data (første object):', parsed);
+        } catch (e2) {
+          log(`<span class="err">Stadig fejl efter prefix-strip: ${e2.message}</span>`, 'err');
+        }
+      }
       return;
     }
     if (!priceRes.parsed?.result) {
