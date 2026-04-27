@@ -156,9 +156,27 @@
         };
       });
 
-      // Erstat L-shop varer i den globale garments-array (bevar SS og CSV)
-      const before = (global.garments || []).filter(g => g.source !== 'L-shop');
-      global.garments = [...before, ...newGarments];
+      // Erstat L-shop varer i den globale garments-array (bevar SS og CSV).
+      // Bruger flere strategier for maksimal kompatibilitet:
+      const currentGarments = global.__getGarments ? global.__getGarments() : (global.garments || []);
+      const before = (currentGarments || []).filter(g => g.source !== 'L-shop');
+      const updated = [...before, ...newGarments];
+
+      // Strategi 1: Brug eksposed setter hvis den findes
+      if (global.__setGarments) {
+        global.__setGarments(updated);
+      }
+      // Strategi 2: Mutér eksisterende array in-place (hvis det er samme reference)
+      if (Array.isArray(global.garments)) {
+        global.garments.length = 0;
+        global.garments.push(...updated);
+      } else {
+        global.garments = updated;
+      }
+      global.dbLog && global.dbLog('garments opdateret', {
+        ny_størrelse: (global.__getGarments ? global.__getGarments() : global.garments).length,
+        window_garments: global.garments ? global.garments.length : 'undefined'
+      });
 
       global.dbLog && global.dbLog('L-shop garments bygget', {
         antal: newGarments.length, eksempel: newGarments[0]

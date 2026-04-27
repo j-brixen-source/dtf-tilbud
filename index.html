@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.0/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="lshop-supabase.js"></script>
+<script src="lshop-supabase.js?v=3"></script>
 <style>
   /* ── SÆT DIN API-NØGLE HER ── */
   /* Se linjen: const API_KEY = "DIN-NØGLE-HER"; i scriptet nedenfor */
@@ -1124,7 +1124,10 @@ function toggleShow(id, btn) {
   else{el.type='password';btn.textContent=el.id.includes('key')?'Vis nøgle':'Vis kodeord';}
 }
 
-let garments = [];
+var garments = [];
+// Eksposér til lshop-supabase.js (var = automatisk på window)
+window.__getGarments = () => garments;
+window.__setGarments = (arr) => { garments = arr; window.garments = arr; };
 let activePos = {}; // DEPRECATED v1.050 — beholdt som tom for bagudkompatibilitet
 function defaultGarmentLine() {
   return {
