@@ -10,6 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.0/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="lshop-supabase.js"></script>
 <style>
   /* ── SÆT DIN API-NØGLE HER ── */
   /* Se linjen: const API_KEY = "DIN-NØGLE-HER"; i scriptet nedenfor */
@@ -759,7 +760,16 @@
           <span style="font-size:11px;margin-top:4px;display:block;opacity:0.7">Understøtter L-shop artikelfil + prisfil (begge som ZIP) — fletter automatisk</span>
         </div>
         <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.zip" multiple style="display:none" onchange="handleFile(event)">
+        <input type="file" id="fileInputSave" accept=".csv,.zip" multiple style="display:none" onchange="handleFileWithSave(event)">
         <div class="file-status" id="garmentStatus"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="document.getElementById('fileInputSave').click()" title="Upload artikel + Major-fil og gem permanent i Supabase (årlig opdatering)">
+            💾 Upload årlig opdatering (gem i Supabase)
+          </button>
+          <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadLshopFromSupabase()" title="Hent eksisterende katalog fra Supabase">
+            🔄 Genindlæs fra Supabase
+          </button>
+        </div>
       </div>
 
       <div class="card">
@@ -4252,6 +4262,58 @@ setKundeType('b2b');
 updateProdTimeDates();
 // Opdatér datoer hvert minut (crossing cutoff time)
 setInterval(updateProdTimeDates, 60000);
+
+// ──────────── L-shop Supabase auto-load + årlig upload ────────────
+async function handleFileWithSave(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  e.target.value = '';
+  if (!window.lshopSupabase) {
+    alert('L-shop Supabase modul ikke loadet. Tjek at lshop-supabase.js er deployet.');
+    return;
+  }
+  if (!getSb()) {
+    alert('Supabase ikke konfigureret. Indstil URL og key under Indstillinger først.');
+    return;
+  }
+  try {
+    // Udpak ZIP'er → CSV-filer
+    const csvFiles = [];
+    for (const f of files) {
+      if (f.name.toLowerCase().endsWith('.zip')) {
+        const zip = await JSZip.loadAsync(f);
+        for (const name of Object.keys(zip.files)) {
+          if (name.toLowerCase().endsWith('.csv') && !zip.files[name].dir) {
+            const blob = await zip.files[name].async('blob');
+            csvFiles.push(new File([blob], name, { type: 'text/csv' }));
+          }
+        }
+      } else if (f.name.toLowerCase().endsWith('.csv')) {
+        csvFiles.push(f);
+      }
+    }
+    if (csvFiles.length < 2) {
+      alert('Upload skal indeholde mindst 2 CSV-filer (artikelfil + Major-fil).\nFundet: ' + csvFiles.length);
+      return;
+    }
+    if (!confirm(`Du er ved at gemme ${csvFiles.length} CSV-filer permanent i Supabase som det nye årlige katalog. Det eksisterende katalog vil blive overskrevet. Fortsæt?`)) {
+      return;
+    }
+    const result = await window.lshopSupabase.parseAndSaveLshopFiles(csvFiles);
+    alert(`✅ Gemt i Supabase:\n• ${result.products} produkter\n• ${result.variants} varianter`);
+  } catch (err) {
+    alert('❌ Fejl: ' + err.message);
+    dbLog('handleFileWithSave fejl', err.message);
+    console.error(err);
+  }
+}
+
+// Auto-load L-shop katalog fra Supabase ved sidestart (hvis konfigureret)
+setTimeout(() => {
+  if (window.lshopSupabase && getSb()) {
+    window.lshopSupabase.loadLshopFromSupabase();
+  }
+}, 800);
 </script>
 </body>
 </html>
