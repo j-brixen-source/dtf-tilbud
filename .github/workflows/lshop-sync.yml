@@ -1,145 +1,176 @@
 name: L-shop Stock Sync
 
-# Schedule: Run 4 times daily (CET timezone)
-# 6:00, 12:00, 18:00, 00:00 CET = 5:00, 11:00, 17:00, 23:00 UTC
+# Kører 4× dagligt (CET): 06:00, 12:00, 18:00, 00:00
+# Cron er i UTC: 5, 11, 17, 23
 on:
   schedule:
-    - cron: '0 5,11,17,23 * * *'  # 4x daily UTC
-  workflow_dispatch:  # Allow manual trigger
+    - cron: '0 5,11,17,23 * * *'
+  workflow_dispatch:        # Manuel trigger via GitHub UI
 
 jobs:
   sync-stock:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 15
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          
+          node-version: '20'
+
       - name: Install dependencies
-        run: |
-          npm install basic-ftp
-          npm install @supabase/supabase-js
-          npm install csv-parser
-          
-      - name: Download and process stockfile
+        run: npm install basic-ftp @supabase/supabase-js
+
+      - name: Sync L-shop stock from FTP to Supabase
         env:
           LSHOP_FTP_HOST: ${{ secrets.LSHOP_FTP_HOST }}
           LSHOP_FTP_USER: ${{ secrets.LSHOP_FTP_USER }}
           LSHOP_FTP_PASS: ${{ secrets.LSHOP_FTP_PASS }}
           LSHOP_FTP_PORT: ${{ secrets.LSHOP_FTP_PORT }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL:    ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:    ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          cat > sync-stock.js << 'EOF'
+          cat > sync-stock.js << 'SCRIPT_EOF'
           const ftp = require('basic-ftp');
           const { createClient } = require('@supabase/supabase-js');
           const fs = require('fs');
-          const csv = require('csv-parser');
-          
-          async function syncStock() {
-            console.log('🔄 Starting L-shop stock sync...');
-            
-            // FTP Download
-            const client = new ftp.Client();
+
+          const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
+
+          async function downloadFromFTP() {
+            const client = new ftp.Client(30000);
+            client.ftp.verbose = false;
             try {
-              console.log('📡 Connecting to L-shop FTP...');
+              log('📡 Connecting to L-shop FTP...');
               await client.access({
-                host: process.env.LSHOP_FTP_HOST,
-                user: process.env.LSHOP_FTP_USER,
+                host:     process.env.LSHOP_FTP_HOST,
+                user:     process.env.LSHOP_FTP_USER,
                 password: process.env.LSHOP_FTP_PASS,
-                port: parseInt(process.env.LSHOP_FTP_PORT || '21'),
-                secure: false
+                port:     parseInt(process.env.LSHOP_FTP_PORT || '21'),
+                secure:   false
               });
-              
-              console.log('📥 Downloading stockfile.csv...');
+              log('✅ Connected. Listing files...');
+
+              const files = await client.list();
+              log(`Found ${files.length} files: ${files.map(f => f.name).join(', ')}`);
+
+              log('📥 Downloading stockfile.csv...');
               await client.downloadTo('stockfile.csv', 'stockfile.csv');
-              console.log('✅ Download completed');
-              
-            } catch (err) {
-              console.error('❌ FTP Error:', err.message);
-              process.exit(1);
+
+              const stats = fs.statSync('stockfile.csv');
+              log(`✅ Downloaded ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
             } finally {
               client.close();
             }
-            
-            // Parse CSV and update Supabase
-            const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-            const stockUpdates = [];
-            
-            return new Promise((resolve, reject) => {
-              fs.createReadStream('stockfile.csv')
-                .pipe(csv({ separator: ';' }))
-                .on('data', (row) => {
-                  // Process L-shop stock data - handle multiple column name variations
-                  const articleNr = row.article || row.ArticleNr || row['Article Nr'] || row.articlenr || row.ArticleNo;
-                  const stockQty = parseInt(row.Stock || row.Qty || row.stock || row.Quantity || '0');
-                  
-                  if (articleNr && !isNaN(stockQty)) {
-                    stockUpdates.push({
-                      article_nr: articleNr.trim(),
-                      stock_qty: stockQty,
-                      last_updated: new Date().toISOString()
-                    });
-                  }
-                })
-                .on('end', async () => {
-                  console.log(`📊 Processing ${stockUpdates.length} stock records...`);
-                  
-                  if (stockUpdates.length === 0) {
-                    console.log('⚠️ No valid stock data found in CSV file');
-                    resolve();
-                    return;
-                  }
-                  
-                  try {
-                    // Batch upsert to Supabase (1000 records per batch)
-                    const batchSize = 1000;
-                    let processed = 0;
-                    
-                    for (let i = 0; i < stockUpdates.length; i += batchSize) {
-                      const batch = stockUpdates.slice(i, i + batchSize);
-                      
-                      const { data, error } = await supabase
-                        .from('lshop_stock')
-                        .upsert(batch, { onConflict: 'article_nr' });
-                        
-                      if (error) {
-                        console.error(`❌ Batch ${i}-${i+batch.length} failed:`, error);
-                        throw error;
-                      }
-                      
-                      processed += batch.length;
-                      console.log(`✅ Batch completed: ${processed}/${stockUpdates.length}`);
-                    }
-                    
-                    console.log('🎉 Stock sync completed successfully!');
-                    console.log(`📈 Updated ${processed} records`);
-                    console.log(`⏰ Last sync: ${new Date().toISOString()}`);
-                    resolve();
-                    
-                  } catch (error) {
-                    console.error('❌ Supabase sync failed:', error);
-                    reject(error);
-                  }
-                })
-                .on('error', (error) => {
-                  console.error('❌ CSV parsing failed:', error);
-                  reject(error);
-                });
-            });
           }
-          
-          // Run sync with global error handling
-          syncStock().catch(error => {
-            console.error('💥 Sync failed:', error);
-            process.exit(1);
-          });
-          EOF
-          
-          # Run the sync script
+
+          function parseCSV(filepath) {
+            // Læs filen som UTF-8 og strip BOM eksplicit
+            let content = fs.readFileSync(filepath, 'utf8');
+            if (content.charCodeAt(0) === 0xFEFF) {
+              content = content.slice(1);
+              log('🔧 Stripped UTF-8 BOM from CSV');
+            }
+
+            // Split på linjer (håndter både \r\n og \n)
+            const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
+            if (lines.length < 2) throw new Error('CSV is empty or has only header');
+
+            // Header: article;stock;catalog
+            const headers = lines[0].split(';').map(h => h.trim().toLowerCase());
+            log(`📋 CSV headers: ${headers.join(', ')}`);
+
+            const idxArticle = headers.indexOf('article');
+            const idxStock   = headers.indexOf('stock');
+            const idxCatalog = headers.indexOf('catalog');
+
+            if (idxArticle < 0 || idxStock < 0 || idxCatalog < 0) {
+              throw new Error(`Missing expected columns. Found: ${headers.join(', ')}`);
+            }
+
+            const rows = [];
+            const now = new Date().toISOString();
+            let dropped = 0;
+
+            for (let i = 1; i < lines.length; i++) {
+              const vals = lines[i].split(';');
+              const article = (vals[idxArticle] || '').trim();
+              const stock   = parseInt((vals[idxStock] || '0').trim(), 10);
+              const catalog = (vals[idxCatalog] || '').trim();
+
+              if (!article || !catalog || isNaN(stock)) {
+                dropped++;
+                continue;
+              }
+
+              rows.push({
+                article_number: article,
+                catalog_nr:     catalog,
+                stock_qty:      stock,
+                last_updated:   now
+              });
+            }
+
+            log(`✅ Parsed ${rows.length} valid rows (${dropped} dropped)`);
+            return rows;
+          }
+
+          async function uploadToSupabase(rows) {
+            const supabase = createClient(
+              process.env.SUPABASE_URL,
+              process.env.SUPABASE_KEY
+            );
+
+            // Truncate via DELETE (RLS skal tillade det — eller brug service_role)
+            log('🗑️  Clearing old stock data...');
+            const { error: delErr } = await supabase
+              .from('lshop_stock')
+              .delete()
+              .neq('article_number', '___never_match___');
+            if (delErr) {
+              log(`⚠️  Delete error: ${delErr.message}`);
+            }
+
+            // Batch insert (1000 ad gangen — Supabase limit)
+            const batchSize = 1000;
+            let inserted = 0;
+
+            for (let i = 0; i < rows.length; i += batchSize) {
+              const batch = rows.slice(i, i + batchSize);
+              const { error } = await supabase
+                .from('lshop_stock')
+                .upsert(batch, { onConflict: 'article_number' });
+
+              if (error) {
+                log(`❌ Batch ${i}-${i + batch.length} failed: ${error.message}`);
+                throw error;
+              }
+              inserted += batch.length;
+              if (i % 10000 === 0) {
+                log(`   ${inserted}/${rows.length} (${Math.round(inserted/rows.length*100)}%)`);
+              }
+            }
+
+            log(`🎉 Uploaded ${inserted} rows to lshop_stock`);
+            return inserted;
+          }
+
+          (async () => {
+            try {
+              log('🚀 Starting L-shop stock sync');
+              await downloadFromFTP();
+              const rows = parseCSV('stockfile.csv');
+              const count = await uploadToSupabase(rows);
+              log(`✨ DONE — ${count} rows synced`);
+            } catch (err) {
+              console.error(`💥 SYNC FAILED: ${err.message}`);
+              console.error(err.stack);
+              process.exit(1);
+            }
+          })();
+          SCRIPT_EOF
+
           node sync-stock.js
