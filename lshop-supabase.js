@@ -108,6 +108,8 @@
 
         // variantPrices: { article_number: { color, size, ek_price, stock_qty } }
         const variantPrices = {};
+        const colorStockMap = {};        // farve → total stock for den farve
+        const colorSizeStockMap = {};    // farve → { størrelse → stock }
         let totalStock = 0;
         let minEk = Infinity, maxEk = 0;
 
@@ -125,6 +127,12 @@
             ek_price: ek,
             stock_qty: stockQty
           };
+          // Lager pr. (farve, størrelse) — bruges i UI
+          if (v.color) {
+            colorStockMap[v.color] = (colorStockMap[v.color] || 0) + stockQty;
+            if (!colorSizeStockMap[v.color]) colorSizeStockMap[v.color] = {};
+            if (v.size) colorSizeStockMap[v.color][v.size] = stockQty;
+          }
         });
 
         if (minEk === Infinity) minEk = 0;
@@ -147,11 +155,12 @@
           colorSizeMap:     p.color_size_map    || {},
           colorHexMap:      p.color_hex_map     || {},
           colorPictureMap:  p.color_picture_map || {},
+          colorStockMap,           // NYT: total stock pr. farve
+          colorSizeStockMap,       // NYT: stock pr. (farve, størrelse) - bruges af UI
           colorStr: (p.colors || []).join(', '),
           sizeStr:  (p.sizes  || []).join(', '),
-          // NYE FELTER (variant-niveau):
-          variantPrices,        // { articleNr: {color, size, ek_price, stock_qty} }
-          totalStock,           // Sum af lager på alle varianter
+          variantPrices,
+          totalStock,
           stockUpdated: stock.length > 0 ? stock[0].last_updated : null
         };
       });
@@ -488,6 +497,22 @@
 
       // Hent EUR/DKK kurs fra UI
       const eurDkk = parseFloat(document.getElementById('eur_dkk')?.value) || 7.50;
+
+      // Byg global ssColorCodes (ColorName → ColorCode) til billed-URLs.
+      // Bygges DIREKTE fra varianttabellen — det er den mest pålidelige kilde,
+      // fordi color_code er gemt pr. variant af workflow'et.
+      const ssColorCodes = {};
+      variants.forEach(v => {
+        if (v.color && v.color_code && !ssColorCodes[v.color]) {
+          ssColorCodes[v.color] = v.color_code;
+        }
+      });
+      global.ssColorCodes = ssColorCodes;
+      global.dbLog && global.dbLog('SS colorCodes bygget til billed-URLs', {
+        antal: Object.keys(ssColorCodes).length,
+        fadedOlive_test: ssColorCodes['Faded Olive'] || '(IKKE FUNDET)',
+        første10: Object.entries(ssColorCodes).slice(0, 10).map(([n, c]) => n + '=' + c)
+      });
 
       // Byg garments[]
       const newGarments = products.map(p => {
