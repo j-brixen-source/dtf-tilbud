@@ -1,16 +1,61 @@
 <!DOCTYPE html>
+<!--
+  ════════════════════════════════════════════════════════════════════════
+  TETOS — Tekstil-tryk.dk Ordre System
+  ════════════════════════════════════════════════════════════════════════
+
+  Version: 1.052
+  Tidligere kendt som: DTF Tilbudsberegner
+
+  ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
+
+  v1.052  (2026-04-27)  ⭐ Aktuel
+          • Omdøbt til TETOS (Tekstil-tryk.dk Ordre System)
+          • Variant-priser for L-shop (pris pr. farve+størrelse)
+          • Prisspænd vises i UI når størrelser har forskellige priser
+          • Prisoversigt opdelt pr. størrelse ved variant-prisning
+
+  v1.051  (2026-04-27)
+          • Auto-load af L-shop katalog fra Supabase ved sidestart
+          • "Upload årlig opdatering"-knap (gem CSV permanent i Supabase)
+          • "Genindlæs fra Supabase"-knap (manuel sync)
+          • Ny lshop-supabase.js: paginering + script-injection til garments
+          • Ny tabel: lshop_variants (~178k rækker, variant-niveau pris)
+          • L-shop FTP stockfile.csv → Supabase 4× dagligt (GitHub Actions)
+          • Fix: var garments + cache-buster på script-tag
+
+  v1.050  (Baseline)
+          • Manuel CSV-upload (drag-and-drop af L-shop ZIP)
+          • Stanley Stella API-sync
+          • Kunder + tilbud i Supabase
+          • PDF-generering (tilbud + ordreseddel)
+          • Email-parsing via Anthropic Claude AI
+
+  ─── KENDTE OPGAVER (planlagt) ──────────────────────────────────────────
+
+  • Stanley Stella → server-side auto-sync (samme model som L-shop)
+  • Stanley Stella variant-pris (samme bug som L-shop havde)
+  • Variant-priser i tilbuds-PDF (lige nu kun i prisoversigt på skærm)
+
+  ─── ARKITEKTUR ─────────────────────────────────────────────────────────
+
+  Single-file webapp (denne fil) + lshop-supabase.js
+  Hostes på Netlify, data i Supabase, FTP-sync via GitHub Actions
+  Se CLAUDE.md i repo-roden for fuld dokumentation
+  ════════════════════════════════════════════════════════════════════════
+-->
 <html lang="da">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DTF Tilbudsberegner v1.050</title>
+<title>TETOS v1.052 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.0/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="lshop-supabase.js?v=4"></script>
+<script src="lshop-supabase.js?v=5"></script>
 <style>
   /* ── SÆT DIN API-NØGLE HER ── */
   /* Se linjen: const API_KEY = "DIN-NØGLE-HER"; i scriptet nedenfor */
@@ -685,9 +730,9 @@
 </div>
 
 <div class="header">
-  <div class="header-logo">DTF // TILBUD</div>
+  <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.050 · Powered by Claude AI</div></div>
+  <div class="header-tag">v1.052 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
 </div>
 
 <div class="layout">
@@ -1216,6 +1261,29 @@ function getMarkup(cp) {
   if(cp<50) return lo; if(cp<=100) return mi; return hi;
 }
 function calcSalePrice(cp) { return Math.round(cp * getMarkup(cp) * 100) / 100; }
+
+// ── Variant-prising (L-shop): find pris pr. (catalog, farve, størrelse) ──
+// Returnerer { ek, sale } eller null hvis ingen variant-data findes.
+// Falder tilbage til gl.costPrice/gl.salePrice hvis ingen match.
+function getVariantSalePrice(gl, size) {
+  // Find garment-objektet
+  const g = (window.__getGarments ? window.__getGarments() : (window.garments||[])).find(x => x.sku === gl.sku);
+  if (!g || !g.variantPrices) return null;
+  if (!gl.selectedColor || !size) return null;
+
+  // Find variant der matcher (color, size). Bruger lowercase + trim for robusthed.
+  const targetColor = String(gl.selectedColor).trim().toLowerCase();
+  const targetSize  = String(size).trim().toLowerCase();
+  for (const articleNr in g.variantPrices) {
+    const v = g.variantPrices[articleNr];
+    if (String(v.color||'').trim().toLowerCase() === targetColor &&
+        String(v.size ||'').trim().toLowerCase() === targetSize) {
+      const ek = +v.ek_price || 0;
+      if (ek > 0) return { ek, sale: calcSalePrice(ek), articleNr };
+    }
+  }
+  return null;
+}
 
 // ── Discount ──
 function getDiscPct(qty) {
@@ -1924,7 +1992,31 @@ function renderGarmentLines() {
         </div>
         <div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Pris pr. stk.</div>
-          <div style="font-size:13px;font-weight:500;padding:6px 0">${gl.salePrice?`${gl.salePrice.toFixed(2)} kr<span class="mu-tag" style="margin-left:4px">×${mu}</span>`:'—'}</div>
+          <div style="font-size:13px;font-weight:500;padding:6px 0">${(() => {
+            // NYT v1.060: vis prisspænd hvis variant-prisning er aktiv
+            const g = (window.__getGarments ? window.__getGarments() : (window.garments||[])).find(x => x.sku === gl.sku);
+            if (g && g.variantPrices && gl.selectedColor) {
+              // Find min/max sale-pris for valgt farve
+              const targetColor = String(gl.selectedColor).trim().toLowerCase();
+              let minSale = Infinity, maxSale = 0, found = false;
+              for (const articleNr in g.variantPrices) {
+                const v = g.variantPrices[articleNr];
+                if (String(v.color||'').trim().toLowerCase() === targetColor && v.ek_price > 0) {
+                  const s = calcSalePrice(v.ek_price);
+                  if (s < minSale) minSale = s;
+                  if (s > maxSale) maxSale = s;
+                  found = true;
+                }
+              }
+              if (found && minSale !== maxSale) {
+                return `${minSale.toFixed(2)}–${maxSale.toFixed(2)} kr<span class="mu-tag" style="margin-left:4px">pr. str.</span>`;
+              } else if (found) {
+                return `${minSale.toFixed(2)} kr<span class="mu-tag" style="margin-left:4px">×${getMarkup(minSale/getMarkup(minSale))}</span>`;
+              }
+            }
+            // Fallback: gammel visning
+            return gl.salePrice ? `${gl.salePrice.toFixed(2)} kr<span class="mu-tag" style="margin-left:4px">×${mu}</span>` : '—';
+          })()}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
           ${gl.sku ? `<button class="btn btn-sm" style="padding:4px 8px;font-size:11px" title="Duplikér linje (ekstra opstart)" onclick="duplicateGarmentLine(${i})">⧉ Duplikér</button>` : ''}
@@ -2439,10 +2531,43 @@ function recalc() {
     if(!gl.salePrice) return;
     const lineQty=Object.values(gl.sizeQtys||{}).reduce((a,v)=>a+(+v||0),0);
     if(!lineQty) return;
-    const lineTotal=gl.salePrice*lineQty;
+
+    // NYT v1.060: variant-pris pr. størrelse hvis tilgængelig (L-shop)
+    let lineTotal = 0;
+    let variantPriced = false;
+    let avgSalePrice = gl.salePrice;
+    const sizeBreakdown = [];
+
+    Object.entries(gl.sizeQtys||{}).forEach(([size, qtyRaw]) => {
+      const qty = +qtyRaw || 0;
+      if (qty <= 0) return;
+      const vp = getVariantSalePrice(gl, size);
+      const unit = vp ? vp.sale : gl.salePrice;
+      if (vp) variantPriced = true;
+      lineTotal += unit * qty;
+      sizeBreakdown.push({ size, qty, unitSale: unit, ek: vp ? vp.ek : (gl.costPrice||0) });
+    });
+
+    if (variantPriced && lineQty > 0) {
+      // Vejet snitpris til visningsformål
+      avgSalePrice = lineTotal / lineQty;
+    } else {
+      // Fallback til gammel logik (Stanley Stella + CSV)
+      lineTotal = gl.salePrice * lineQty;
+    }
+
     clothesGross+=lineTotal;
     const sizeDetail=Object.entries(gl.sizeQtys||{}).filter(([,v])=>+v>0).map(([s,v])=>`${s}:${v}`).join(', ');
-    clothesLines.push({name:gl.name||'Tøj', sku:gl.sku||'', qty:lineQty, salePrice:gl.salePrice, total:lineTotal, sizes:sizeDetail});
+    clothesLines.push({
+      name: gl.name||'Tøj',
+      sku:  gl.sku||'',
+      qty:  lineQty,
+      salePrice: avgSalePrice,
+      total: lineTotal,
+      sizes: sizeDetail,
+      variantPriced,         // NYT: marker om variant-pris blev brugt
+      sizeBreakdown          // NYT: detaljer pr. størrelse til ordreseddel/PDF
+    });
   });
   const clothesDisc=clothesGross*(discPct/100);
   const clothesNet=clothesGross-clothesDisc;
@@ -2458,11 +2583,27 @@ function recalc() {
   let html='<div class="price-section">Tekstil</div>';
   if(clothesLines.length){
     clothesLines.forEach(cl=>{
-      const unitExMoms=cl.salePrice*(1-discPct/100);
-      const unitInkMoms=unitExMoms*1.25;
       const skuBadge = cl.sku ? ` <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted)">· ${cl.sku}</span>` : '';
       html+=`<div class="price-line"><span>${cl.name}${skuBadge} × ${cl.qty} stk (${cl.sizes})</span><span>${cl.total.toFixed(2)} kr</span></div>`;
-      html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${unitExMoms.toFixed(2)} kr ekskl. moms · ${unitInkMoms.toFixed(2)} kr inkl. moms</span></div>`;
+
+      if (cl.variantPriced && cl.sizeBreakdown && cl.sizeBreakdown.length > 1) {
+        // NYT v1.060: vis pris pr. størrelse når variant-prisning er aktiv
+        const distinctPrices = [...new Set(cl.sizeBreakdown.map(b => b.unitSale.toFixed(2)))];
+        if (distinctPrices.length > 1) {
+          cl.sizeBreakdown.forEach(b => {
+            const unitDisc = b.unitSale * (1 - discPct/100);
+            html += `<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:16px;color:var(--muted)">${b.size} × ${b.qty} à ${b.unitSale.toFixed(2)} kr</span><span style="color:var(--muted)">${(b.unitSale*b.qty).toFixed(2)} kr</span></div>`;
+          });
+        } else {
+          const unitExMoms=cl.salePrice*(1-discPct/100);
+          const unitInkMoms=unitExMoms*1.25;
+          html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${unitExMoms.toFixed(2)} kr ekskl. moms · ${unitInkMoms.toFixed(2)} kr inkl. moms</span></div>`;
+        }
+      } else {
+        const unitExMoms=cl.salePrice*(1-discPct/100);
+        const unitInkMoms=unitExMoms*1.25;
+        html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${unitExMoms.toFixed(2)} kr ekskl. moms · ${unitInkMoms.toFixed(2)} kr inkl. moms</span></div>`;
+      }
     });
   } else {
     html+=`<div class="price-line"><span style="font-style:italic">Ingen tøj valgt</span><span>0,00 kr</span></div>`;
