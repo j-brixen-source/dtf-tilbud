@@ -4,12 +4,19 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.052
+  Version: 1.053
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.052  (2026-04-27)  ⭐ Aktuel
+  v1.053  (2026-04-27)  ⭐ Aktuel
+          • Stanley Stella → server-side auto-sync (1× dagligt kl. 06:00)
+          • Variant-priser for Stanley Stella (pris pr. farve+størrelse)
+          • Login-felter + sync-knap fjernet (auto-load fra Supabase)
+          • EUR/DKK kurs i UI omregner priser ved hver visning
+          • Nye tabeller: stanley_products + stanley_variants + stanley_full
+
+  v1.052  (2026-04-27)
           • Omdøbt til TETOS (Tekstil-tryk.dk Ordre System)
           • Variant-priser for L-shop (pris pr. farve+størrelse)
           • Prisspænd vises i UI når størrelser har forskellige priser
@@ -48,14 +55,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.052 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.053 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.0/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="lshop-supabase.js?v=5"></script>
+<script src="lshop-supabase.js?v=6"></script>
 <style>
   /* ── SÆT DIN API-NØGLE HER ── */
   /* Se linjen: const API_KEY = "DIN-NØGLE-HER"; i scriptet nedenfor */
@@ -732,7 +739,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.052 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
+  <div class="header-tag">v1.053 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
 </div>
 
 <div class="layout">
@@ -776,20 +783,21 @@
       <div class="card">
         <div class="card-title">Tøjliste</div>
 
-        <!-- Stanley Stella -->
+        <!-- Stanley Stella (auto-syncet via GitHub Actions kl. 06:00 dagligt) -->
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px">
-          <div style="font-size:13px;font-weight:500;margin-bottom:8px">Stanley Stella</div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-            <input type="text" id="ss_user_inline" placeholder="Brugernavn / email" style="flex:1;min-width:140px" oninput="saveCredentials()">
-            <input type="password" id="ss_pass_inline" placeholder="Kodeord" style="flex:1;min-width:120px" oninput="saveCredentials()">
-            <button class="btn btn-primary btn-sm" onclick="fetchStanleyStella()">Synkronisér →</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:500">Stanley Stella <span style="font-size:11px;color:var(--muted);font-weight:400">· auto-synced kl. 06:00 dagligt</span></div>
+            <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()" title="Hent eksisterende katalog fra Supabase">
+              🔄 Genindlæs
+            </button>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span style="font-size:12px;color:var(--muted)">EUR/DKK kurs:</span>
-            <input type="number" id="eur_dkk" value="7.50" step="0.01" min="1" style="width:80px">
+            <input type="number" id="eur_dkk" value="7.50" step="0.01" min="1" style="width:80px"
+              onchange="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()">
             <span style="font-size:12px;color:var(--muted)">Priser fra SS er i EUR og omregnes automatisk</span>
           </div>
-          <div class="loading" id="ssLoading"><div class="spinner"></div>Henter fra Stanley Stella...</div>
+          <div class="loading" id="ssLoading" style="display:none"><div class="spinner"></div>Henter fra Stanley Stella...</div>
           <div id="ssStatus" class="file-status"></div>
         </div>
 
@@ -977,20 +985,16 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Stanley Stella login</div>
-        <div class="info-box">Samme brugernavn og kodeord som du bruger på <strong>api.stanleystella.com</strong></div>
-        <div class="field-row">
-          <div class="field-label">Brugernavn / email</div>
-          <input type="text" id="ss_user" placeholder="din@email.com" style="flex:1;max-width:300px" oninput="saveCredentials()">
+        <div class="card-title">Stanley Stella <span class="badge" style="background:#10b981;color:white">Auto-synced</span></div>
+        <div class="info-box">
+          Stanley Stella katalog synkroniseres nu <strong>automatisk via GitHub Actions kl. 06:00 dagligt</strong>.
+          Login-credentials gemmes sikkert som GitHub secrets.
+          <br><br>
+          Appen henter automatisk det aktuelle katalog fra Supabase ved sidestart — intet manuelt arbejde nødvendigt.
         </div>
-        <div class="field-row">
-          <div class="field-label">Kodeord</div>
-          <input type="password" id="ss_pass" placeholder="••••••••" style="flex:1;max-width:300px" oninput="saveCredentials()">
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <button class="btn btn-sm" onclick="toggleShow('ss_pass',this)">Vis kodeord</button>
-          <button class="btn btn-primary btn-sm" onclick="fetchStanleyStella()">Test forbindelse →</button>
-        </div>
+        <!-- Skjulte felter bevaret for bagudkompatibilitet med config-fil parsing -->
+        <input type="hidden" id="ss_user">
+        <input type="hidden" id="ss_pass">
       </div>
 
       <div class="card">
@@ -3814,11 +3818,18 @@ function initSupabase() {
     try {
       supabaseClient = supabase.createClient(url, key);
       dbLog('Supabase klar', url);
-      // Auto-load L-shop katalog så snart Supabase er klar — uanset hvornår det sker
-      // (ved sidestart, efter config-fil-upload, eller manuel indtastning)
+      // Auto-load L-shop OG Stanley Stella så snart Supabase er klar
       if (!_lshopAutoLoadDone && window.lshopSupabase) {
         _lshopAutoLoadDone = true;
-        setTimeout(() => window.lshopSupabase.loadLshopFromSupabase(), 200);
+        setTimeout(() => {
+          window.lshopSupabase.loadLshopFromSupabase();
+          // Stanley Stella loades parallelt (efter kort delay så det ikke konkurrerer)
+          setTimeout(() => {
+            if (window.lshopSupabase.loadStanleyFromSupabase) {
+              window.lshopSupabase.loadStanleyFromSupabase();
+            }
+          }, 500);
+        }, 200);
       }
     } catch(e) {
       dbLog('Supabase fejl', e.message);

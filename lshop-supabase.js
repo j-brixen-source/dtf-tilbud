@@ -452,12 +452,160 @@
     return { products: products.length, variants: variants.length };
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // STANLEY STELLA — auto-load fra Supabase
+  // ════════════════════════════════════════════════════════════════════
+
+  async function loadStanleyFromSupabase() {
+    const sb = global.getSB && global.getSB();
+    if (!sb) { global.dbLog && global.dbLog('Stanley auto-load', 'Supabase ikke klar'); return false; }
+
+    const status = document.getElementById('ssStatus');
+    if (status) status.innerHTML = '<span style="color:var(--muted);font-size:12px">⏳ Henter Stanley Stella fra Supabase...</span>';
+
+    try {
+      const products = await fetchAllRows(sb, 'stanley_products', '*');
+      if (status) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ ${products.length} styles ✓ — Henter varianter...</span>`;
+
+      const variants = await fetchAllRows(sb, 'stanley_variants', '*',
+        n => { if (status && n % 2000 === 0) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ Henter varianter... ${n.toLocaleString()}</span>`; });
+
+      global.dbLog && global.dbLog('Supabase stanley hentet', {
+        products: products.length, variants: variants.length
+      });
+
+      if (products.length === 0) {
+        if (status) status.innerHTML = '<span style="color:var(--muted);font-size:12px">Intet Stanley Stella katalog i Supabase endnu</span>';
+        return false;
+      }
+
+      // Index varianter pr. style
+      const variantsByStyle = {};
+      variants.forEach(v => {
+        if (!variantsByStyle[v.style_code]) variantsByStyle[v.style_code] = [];
+        variantsByStyle[v.style_code].push(v);
+      });
+
+      // Hent EUR/DKK kurs fra UI
+      const eurDkk = parseFloat(document.getElementById('eur_dkk')?.value) || 7.50;
+
+      // Byg garments[]
+      const newGarments = products.map(p => {
+        const vs = variantsByStyle[p.style_code] || [];
+
+        // variantPrices: { sku: { color, size, ek_price (DKK), stock_qty } }
+        const variantPrices = {};
+        let totalStock = 0;
+        let minEkDkk = Infinity, maxEkDkk = 0;
+
+        vs.forEach(v => {
+          const ekDkk = (parseFloat(v.ek_price_eur) || 0) * eurDkk;
+          totalStock += v.stock_qty || 0;
+          if (ekDkk > 0) {
+            if (ekDkk < minEkDkk) minEkDkk = ekDkk;
+            if (ekDkk > maxEkDkk) maxEkDkk = ekDkk;
+          }
+          variantPrices[v.sku] = {
+            color:    v.color || '',
+            size:     v.size  || '',
+            ek_price: Number(ekDkk.toFixed(2)),
+            stock_qty: v.stock_qty || 0
+          };
+        });
+
+        if (minEkDkk === Infinity) minEkDkk = 0;
+        const cp = minEkDkk;
+
+        // Color stock map til UI (sum pr. farve)
+        const colorStockMap = {};
+        const colorSizeStockMap = {};
+        vs.forEach(v => {
+          if (!v.color) return;
+          colorStockMap[v.color] = (colorStockMap[v.color] || 0) + (v.stock_qty || 0);
+          if (!colorSizeStockMap[v.color]) colorSizeStockMap[v.color] = {};
+          if (v.size) colorSizeStockMap[v.color][v.size] = v.stock_qty || 0;
+        });
+
+        return {
+          name:       p.name || p.style_code,
+          sku:        p.style_code,
+          brand:      p.brand || 'Stanley Stella',
+          searchText: p.search_text || (`stanley stella ${p.name} ${p.style_code}`).toLowerCase(),
+          productType: p.product_type || '',
+          costPrice:  Number(cp.toFixed(2)),
+          costPriceMin: Number(minEkDkk.toFixed(2)),
+          costPriceMax: Number(maxEkDkk.toFixed(2)),
+          salePrice:  global.calcSalePrice ? global.calcSalePrice(cp) : cp,
+          fromSS:     true,
+          source:     'Stanley Stella',
+          colors:     p.colors || [],
+          sizes:      p.sizes  || [],
+          colorSizeMap:    p.color_size_map || {},
+          colorHexMap:     p.color_hex_map  || {},
+          colorCodeMap:    p.color_code_map || {},
+          colorStockMap,
+          colorSizeStockMap,
+          colorPictureMap: {},
+          colorStr: (p.colors || []).join(', '),
+          sizeStr:  (p.sizes  || []).join(', '),
+          // Variant-pris (allerede konverteret til DKK)
+          variantPrices,
+          totalStock,
+          stockUpdated: products[0]?.updated_at || null
+        };
+      });
+
+      // Erstat SS-varer i garments-arrayet (bevar L-shop og CSV)
+      // Bruger script-injection som L-shop også gør
+      try {
+        global.__stanleyPendingGarments = newGarments;
+        const inj = document.createElement('script');
+        inj.textContent = `
+          try {
+            if (typeof garments !== 'undefined' && Array.isArray(window.__stanleyPendingGarments)) {
+              const _before = garments.filter(g => g.source !== 'Stanley Stella' && !g.fromSS);
+              garments.length = 0;
+              garments.push(..._before, ...window.__stanleyPendingGarments);
+              window.__stanleyInjectionResult = garments.length;
+            } else {
+              window.__stanleyInjectionResult = -1;
+            }
+          } catch(e) { window.__stanleyInjectionResult = 'error: ' + e.message; }
+        `;
+        document.head.appendChild(inj);
+        document.head.removeChild(inj);
+        delete global.__stanleyPendingGarments;
+        global.dbLog && global.dbLog('Stanley injection result', global.__stanleyInjectionResult);
+        delete global.__stanleyInjectionResult;
+      } catch (e) {
+        global.dbLog && global.dbLog('Stanley injection failed', e.message);
+      }
+
+      // Status
+      if (status) {
+        const updated = products[0]?.updated_at ? new Date(products[0].updated_at).toLocaleString('da-DK', {dateStyle:'short', timeStyle:'short'}) : 'aldrig';
+        status.innerHTML = `<span class="tag tag-green">✓ ${newGarments.length} Stanley Stella styles</span> <span style="font-size:11px;color:var(--muted)">Opdateret ${updated}</span>`;
+      }
+
+      // Re-render
+      if (global.renderGarmentTable) global.renderGarmentTable();
+      if (global.renderGarmentLines) global.renderGarmentLines();
+
+      return true;
+    } catch (err) {
+      global.dbLog && global.dbLog('Stanley auto-load fejl', err.message);
+      if (status) status.innerHTML = `<span class="tag tag-red">Auto-load fejl: ${err.message}</span>`;
+      return false;
+    }
+  }
+
   // ─── Eksportér til global scope ──────────────────────────────────────
   global.lshopSupabase = {
     loadLshopFromSupabase,
     saveLshopToSupabase,
     buildRecordsFromRows,
-    parseAndSaveLshopFiles
+    parseAndSaveLshopFiles,
+    loadStanleyFromSupabase
   };
 
 })(window);
