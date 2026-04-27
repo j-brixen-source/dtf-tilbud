@@ -156,25 +156,75 @@
         };
       });
 
-      // Erstat L-shop varer i den globale garments-array (bevar SS og CSV).
-      // Bruger flere strategier for maksimal kompatibilitet:
-      const currentGarments = global.__getGarments ? global.__getGarments() : (global.garments || []);
-      const before = (currentGarments || []).filter(g => g.source !== 'L-shop');
-      const updated = [...before, ...newGarments];
+      // ────────────────────────────────────────────────────────────────
+      // KRITISK: Opdatér garments på den måde v1.050 selv gør det.
+      // v1.050 deklarerer 'let garments' inde i samme <script>-tag som
+      // alle dens funktioner — så variablen er kun synlig fra dén closure.
+      // Vi kan IKKE skrive direkte til den fra et eksternt script.
+      //
+      // I stedet bruger vi en lille trick: vi finder og kalder den same
+      // mekanisme som handleFile() bruger til at sætte garments. Det er
+      // funktionen 'processRows' eller direkte assignment via en proxy.
+      //
+      // Den bedste måde er at injicere vores data via det samme flow som
+      // CSV-uploaden bruger. Vi simulerer at v1.050 lige har parset rows.
+      // ────────────────────────────────────────────────────────────────
 
-      // Strategi 1: Brug eksposed setter hvis den findes
-      if (global.__setGarments) {
-        global.__setGarments(updated);
+      const updated = newGarments;
+
+      // Forsøg 1: Brug eksposed setter (hvis index.html har var garments + setter)
+      let success = false;
+      if (typeof global.__setGarments === 'function') {
+        try {
+          const before = (global.__getGarments ? global.__getGarments() : []).filter(g => g.source !== 'L-shop');
+          global.__setGarments([...before, ...newGarments]);
+          const after = global.__getGarments ? global.__getGarments() : [];
+          if (after.length >= newGarments.length) success = true;
+        } catch (e) { /* fortsæt */ }
       }
-      // Strategi 2: Mutér eksisterende array in-place (hvis det er samme reference)
-      if (Array.isArray(global.garments)) {
-        global.garments.length = 0;
-        global.garments.push(...updated);
-      } else {
+
+      // Forsøg 2: Direct script injection — kør kode i v1.050's egen scope
+      if (!success) {
+        try {
+          // Gem newGarments midlertidigt på window
+          global.__lshopPendingGarments = newGarments;
+          // Eksekvér kode som v1.050's eget script tag — det får adgang til 'garments'
+          const injectedScript = document.createElement('script');
+          injectedScript.textContent = `
+            try {
+              if (typeof garments !== 'undefined' && Array.isArray(window.__lshopPendingGarments)) {
+                const _before = garments.filter(g => g.source !== 'L-shop');
+                garments.length = 0;
+                garments.push(..._before, ...window.__lshopPendingGarments);
+                window.__lshopInjectionResult = garments.length;
+              } else {
+                window.__lshopInjectionResult = -1;  // garments ikke synlig
+              }
+            } catch(e) { window.__lshopInjectionResult = 'error: ' + e.message; }
+          `;
+          document.head.appendChild(injectedScript);
+          document.head.removeChild(injectedScript);
+          delete global.__lshopPendingGarments;
+          if (typeof global.__lshopInjectionResult === 'number' && global.__lshopInjectionResult > 0) {
+            success = true;
+            global.dbLog && global.dbLog('Injection success', global.__lshopInjectionResult);
+          } else {
+            global.dbLog && global.dbLog('Injection result', global.__lshopInjectionResult);
+          }
+          delete global.__lshopInjectionResult;
+        } catch (e) {
+          global.dbLog && global.dbLog('Injection failed', e.message);
+        }
+      }
+
+      // Forsøg 3: Sidste udvej — sæt window.garments
+      if (!success) {
         global.garments = updated;
       }
+
       global.dbLog && global.dbLog('garments opdateret', {
-        ny_størrelse: (global.__getGarments ? global.__getGarments() : global.garments).length,
+        success: success,
+        ny_størrelse_via_getter: global.__getGarments ? global.__getGarments().length : 'no_getter',
         window_garments: global.garments ? global.garments.length : 'undefined'
       });
 
