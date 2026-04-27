@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TETOS — SS API Diagnostik</title>
+<title>TETOS — SS API Diagnostik v2</title>
 <style>
   body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 30px auto; padding: 20px; }
   h1 { color: #333; }
@@ -10,15 +10,20 @@
   input, button { font-size: 14px; padding: 8px; margin: 4px; }
   button { background: #0066cc; color: white; border: none; border-radius: 6px; cursor: pointer; }
   button:hover { background: #0052a3; }
-  pre { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow: auto; max-height: 400px; font-size: 11px; }
+  pre { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow: auto; max-height: 400px; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
   .ok { color: green; } .err { color: red; } .info { color: #666; }
   .stat { display: inline-block; padding: 4px 10px; background: #e3f2fd; border-radius: 12px; margin: 2px; font-size: 12px; }
+  .warn-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 12px 0; border-radius: 4px; }
 </style>
 </head>
 <body>
 
-<h1>🔬 Stanley Stella API — Diagnostik</h1>
-<p>Henter en snapshot fra SS API'et så vi kan designe variant-pris-modellen korrekt.</p>
+<h1>🔬 Stanley Stella API — Diagnostik v2</h1>
+
+<div class="warn-box">
+  <strong>VIGTIGT:</strong> Upload denne fil til repo-roden og kør den fra Netlify-domænet (ikke lokalt fra Mac), ellers blokerer CORS. Åbn fra:<br><br>
+  <strong>https://aquamarine-liger-acf01f.netlify.app/ss-diagnostik.html</strong>
+</div>
 
 <div class="box">
   <strong>Login</strong><br>
@@ -36,13 +41,29 @@ const log = (msg, cls='') => {
   div.innerHTML = `<span class="${cls}">${msg}</span>`;
   document.getElementById('output').appendChild(div);
 };
-const dump = (label, data, max=2000) => {
+const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const dump = (label, data, max=3000) => {
   const div = document.createElement('div');
   div.className = 'box';
   const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-  div.innerHTML = `<strong>${label}</strong><pre>${json.slice(0, max)}${json.length > max ? '\n\n... (' + (json.length - max) + ' tegn mere)' : ''}</pre>`;
+  div.innerHTML = `<strong>${label}</strong><pre>${escapeHtml(json.slice(0, max))}${json.length > max ? '\n\n... (' + (json.length - max) + ' tegn mere)' : ''}</pre>`;
   document.getElementById('output').appendChild(div);
 };
+
+async function callSS(endpoint, payload) {
+  const url = `https://api.stanleystella.com/webrequest/${endpoint}`;
+  const res = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  });
+  const status = res.status;
+  const rawText = await res.text();
+  let parsed = null, parseError = null;
+  try { parsed = JSON.parse(rawText); }
+  catch (e) { parseError = e.message; }
+  return { status, rawText, parsed, parseError };
+}
 
 async function diagnose() {
   document.getElementById('output').innerHTML = '';
@@ -53,61 +74,83 @@ async function diagnose() {
   const payload = { LoginName: user, Password: pass, LanguageCode: 'en', PageNum: 1, PageSize: 50000 };
 
   try {
-    log('🔄 Kører diagnostik... det tager 30-60 sekunder', 'info');
+    log('🔄 Kører diagnostik...', 'info');
 
-    // 1. Priser
-    log('📥 Henter priser (get_prices)...', 'info');
-    const priceRes = await fetch('https://api.stanleystella.com/webrequest/products/get_prices', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
-    });
-    const priceData = await priceRes.json();
-    const priceRaw = typeof priceData.result==='string' ? JSON.parse(priceData.result) : priceData.result;
+    log('📥 Test 1: get_json_color (smoke test)...', 'info');
+    const colorRes = await callSS('color/get_json', payload);
+    log(`HTTP status: ${colorRes.status}`);
+    if (colorRes.parseError) {
+      log(`<strong class="err">JSON parse fejl: ${colorRes.parseError}</strong>`, 'err');
+      dump('Rå serversvar:', colorRes.rawText);
+      return;
+    }
+    log(`<span class="ok">✓ Forbindelse OK</span>`, 'ok');
 
-    if (!Array.isArray(priceRaw)) {
-      dump('❌ Pris-response (ikke array)', priceData);
+    log('📥 Test 2: get_prices...', 'info');
+    const priceRes = await callSS('products/get_prices', payload);
+    if (priceRes.parseError) {
+      dump('❌ Pris-response (kunne ikke parses):', priceRes.rawText);
+      return;
+    }
+    if (!priceRes.parsed?.result) {
+      dump('❌ Pris-response har intet result-felt:', priceRes.parsed);
       return;
     }
 
-    log(`<span class="ok">✓ ${priceRaw.length.toLocaleString()} pris-records</span>`, 'ok');
+    const priceRaw = typeof priceRes.parsed.result === 'string'
+      ? JSON.parse(priceRes.parsed.result)
+      : priceRes.parsed.result;
 
-    // Tjek struktur af første pris-record
-    dump('Pris-record (første) — felter:', priceRaw[0]);
+    if (!Array.isArray(priceRaw)) {
+      dump('❌ Priser er ikke array:', priceRaw);
+      return;
+    }
 
-    // Tjek om priserne er pr. style eller pr. variant
-    const skus = priceRaw.map(p => p.B2BSKUREF || p.SKU || p.sku).filter(Boolean);
+    log(`<span class="ok">✓ ${priceRaw.length.toLocaleString()} pris-records hentet</span>`, 'ok');
+    if (priceRaw.length === 0) return log('<strong class="err">⚠️ 0 records — tjek login</strong>', 'err');
+
+    dump('🔍 Pris-record (første) — alle felter:', priceRaw[0]);
+
+    const skuFields = ['B2BSKUREF', 'SKU', 'sku', 'StyleCode', 'style_code'];
+    const detectedSkuField = skuFields.find(f => priceRaw[0][f] !== undefined);
+    const priceFields = ['PurchasePrice', 'purchase_price', 'Price', 'price'];
+    const detectedPriceField = priceFields.find(f => priceRaw[0][f] !== undefined);
+    log(`<span class="info">SKU-felt: <strong>${detectedSkuField || '?'}</strong> · Pris-felt: <strong>${detectedPriceField || '?'}</strong></span>`);
+
+    if (!detectedSkuField || !detectedPriceField) {
+      dump('Alle felter:', Object.keys(priceRaw[0]));
+      return;
+    }
+
+    const skus = priceRaw.map(p => p[detectedSkuField]).filter(Boolean);
     const uniqueSkus = new Set(skus).size;
 
-    // Tæl unikke priser pr. SKU-prefix (style)
     const skusByPrefix = {};
     skus.forEach(sku => {
-      const prefix = sku.split('-')[0]; // ofte "STTU755-C001-S" → STTU755
-      if (!skusByPrefix[prefix]) skusByPrefix[prefix] = new Set();
-      skusByPrefix[prefix].add(sku);
+      const prefix = String(sku).slice(0, 7);
+      if (!skusByPrefix[prefix]) skusByPrefix[prefix] = [];
+      skusByPrefix[prefix].push(sku);
     });
     const uniquePrefixes = Object.keys(skusByPrefix).length;
     const avgVariantsPerStyle = uniqueSkus / uniquePrefixes;
 
-    log(`<strong>SKU-analyse:</strong>
+    log(`<strong>📊 SKU-analyse:</strong>
       <div class="stat">${uniqueSkus.toLocaleString()} unikke SKU'er</div>
-      <div class="stat">${uniquePrefixes.toLocaleString()} unikke prefix (sandsynligvis styles)</div>
-      <div class="stat">⌀ ${avgVariantsPerStyle.toFixed(1)} varianter pr. style</div>`);
+      <div class="stat">${uniquePrefixes.toLocaleString()} unikke prefix</div>
+      <div class="stat">⌀ ${avgVariantsPerStyle.toFixed(1)} varianter pr. prefix</div>`);
 
     if (avgVariantsPerStyle > 1.5) {
-      log('<strong class="ok">✅ FUND: Priser er på VARIANT-niveau, ikke style-niveau!</strong> Det betyder vi kan hente korrekt pris pr. (farve, størrelse).', 'ok');
+      log('<strong class="ok">✅ FUND: Priser er på VARIANT-niveau!</strong>', 'ok');
     } else {
-      log('<strong class="err">⚠️ Priser ser ud til at være på STYLE-niveau.</strong> Variant-pris kræver muligvis andet endpoint.', 'err');
+      log('<strong class="err">⚠️ Priser ser ud til at være på STYLE-niveau</strong>', 'err');
     }
 
-    // Find pris-spænd indenfor en enkelt style
-    const samplePrefix = Object.entries(skusByPrefix).find(([p, s]) => s.size > 5)?.[0];
+    const samplePrefix = Object.entries(skusByPrefix).find(([p, s]) => s.length > 5)?.[0];
     if (samplePrefix) {
-      const skusForStyle = [...skusByPrefix[samplePrefix]];
+      const skusForStyle = skusByPrefix[samplePrefix];
       const pricesForStyle = priceRaw
-        .filter(p => skusForStyle.includes(p.B2BSKUREF || p.SKU || p.sku))
-        .map(p => ({
-          sku: p.B2BSKUREF || p.SKU || p.sku,
-          price: parseFloat(p.PurchasePrice || p.purchase_price || p.Price || p.price || 0)
-        }))
+        .filter(p => skusForStyle.includes(p[detectedSkuField]))
+        .map(p => ({ sku: p[detectedSkuField], price: parseFloat(p[detectedPriceField] || 0) }))
         .filter(x => x.price > 0)
         .sort((a, b) => a.price - b.price);
 
@@ -115,39 +158,36 @@ async function diagnose() {
       const maxP = pricesForStyle[pricesForStyle.length - 1]?.price;
       const diffPct = minP ? ((maxP - minP) / minP * 100) : 0;
 
-      log(`<strong>Eksempel — style "${samplePrefix}":</strong>
-        <div class="stat">${pricesForStyle.length} varianter med pris</div>
-        <div class="stat">Min: €${minP?.toFixed(2)}</div>
-        <div class="stat">Max: €${maxP?.toFixed(2)}</div>
+      log(`<strong>🎯 Pris-spænd "${samplePrefix}":</strong>
+        <div class="stat">${pricesForStyle.length} varianter</div>
+        <div class="stat">Min: ${minP?.toFixed(2)}</div>
+        <div class="stat">Max: ${maxP?.toFixed(2)}</div>
         <div class="stat">Spænd: ${diffPct.toFixed(1)}%</div>`);
+      dump(`Top 8 varianter for ${samplePrefix}:`, pricesForStyle.slice(0, 8));
+    }
 
-      if (diffPct > 5) {
-        log('<strong class="ok">📊 Konkret bevis: Forskellige varianter af samme style HAR forskellige priser.</strong> Variant-pris-fix vil flytte tal.', 'ok');
-        dump(`Pris-spænd for ${samplePrefix} (top 8):`, pricesForStyle.slice(0, 8));
+    log('📥 Test 3: get_json (variants — første 5)...', 'info');
+    const varRes = await callSS('products/get_json', {...payload, PageSize: 5, In_Stock: false});
+    if (!varRes.parseError && varRes.parsed?.result) {
+      const varRaw = typeof varRes.parsed.result === 'string'
+        ? JSON.parse(varRes.parsed.result)
+        : varRes.parsed.result;
+      if (Array.isArray(varRaw) && varRaw.length > 0) {
+        dump('Variant-record (første) — alle felter:', varRaw[0]);
+        log(`<span class="info">Variant-felter: ${Object.keys(varRaw[0]).join(', ')}</span>`);
       }
+    } else {
+      log(`<span class="err">Variant-endpoint fejlede: ${varRes.parseError || varRes.status}</span>`, 'err');
     }
 
-    // 2. Varianter (struktur)
-    log('📥 Henter variant-struktur (get_json — første 5)...', 'info');
-    const varRes = await fetch('https://api.stanleystella.com/webrequest/products/get_json', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({...payload, PageSize: 5, In_Stock: false})
-    });
-    const varData = await varRes.json();
-    const varRaw = typeof varData.result==='string' ? JSON.parse(varData.result) : varData.result;
-    if (Array.isArray(varRaw) && varRaw.length > 0) {
-      dump('Variant-record (første) — felter:', varRaw[0]);
-      log(`<span class="info">Variant-felter: ${Object.keys(varRaw[0]).join(', ')}</span>`);
-    }
-
-    log('<strong class="ok">✅ Diagnostik færdig. Send hele dette skærmbillede tilbage.</strong>', 'ok');
+    log('<strong class="ok">✅ Diagnostik færdig — send screenshot</strong>', 'ok');
 
   } catch (err) {
     log(`<strong class="err">❌ Fejl: ${err.message}</strong>`, 'err');
+    dump('Stack:', err.stack || '');
     console.error(err);
   }
 }
 </script>
-
 </body>
 </html>
