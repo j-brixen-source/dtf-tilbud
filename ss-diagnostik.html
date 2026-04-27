@@ -18,7 +18,7 @@
 </head>
 <body>
 
-<h1>🔬 Stanley Stella API — Diagnostik v3</h1>
+<h1>🔬 Stanley Stella API — Diagnostik v4</h1>
 
 <div class="warn-box">
   <strong>VIGTIGT:</strong> Upload denne fil til repo-roden og kør den fra Netlify-domænet (ikke lokalt fra Mac), ellers blokerer CORS. Åbn fra:<br><br>
@@ -71,7 +71,17 @@ async function diagnose() {
   const pass = document.getElementById('pass').value.trim();
   if (!user || !pass) return log('Mangler login', 'err');
 
-  const payload = { LoginName: user, Password: pass, LanguageCode: 'en', PageNum: 1, PageSize: 50000 };
+  const payload = {
+    jsonrpc: "2.0",
+    method: "call",
+    params: {
+      db_name: "production_api",
+      user: user,
+      password: pass,
+      LanguageCode: "en_GB",
+      Published: true
+    }
+  };
 
   try {
     log('🔄 Kører diagnostik...', 'info');
@@ -188,7 +198,11 @@ async function diagnose() {
     }
 
     log('📥 Test 3: get_json (variants — første 5)...', 'info');
-    const varRes = await callSS('products/get_json', {...payload, PageSize: 5, In_Stock: false});
+    const variantPayload = {
+      ...payload,
+      params: { ...payload.params, In_Stock: false }
+    };
+    const varRes = await callSS('products/get_json', variantPayload);
     if (!varRes.parseError && varRes.parsed?.result) {
       const varRaw = typeof varRes.parsed.result === 'string'
         ? JSON.parse(varRes.parsed.result)
