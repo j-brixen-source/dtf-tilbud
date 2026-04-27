@@ -3661,6 +3661,7 @@ function debugDump() {
 
 // ── Supabase ──
 let supabaseClient = null;
+let _lshopAutoLoadDone = false;  // sikrer at auto-load kun kører én gang pr. session
 
 function initSupabase() {
   const url = localStorage.getItem('sb_url');
@@ -3669,6 +3670,12 @@ function initSupabase() {
     try {
       supabaseClient = supabase.createClient(url, key);
       dbLog('Supabase klar', url);
+      // Auto-load L-shop katalog så snart Supabase er klar — uanset hvornår det sker
+      // (ved sidestart, efter config-fil-upload, eller manuel indtastning)
+      if (!_lshopAutoLoadDone && window.lshopSupabase) {
+        _lshopAutoLoadDone = true;
+        setTimeout(() => window.lshopSupabase.loadLshopFromSupabase(), 200);
+      }
     } catch(e) {
       dbLog('Supabase fejl', e.message);
     }
