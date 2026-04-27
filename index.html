@@ -4279,7 +4279,7 @@ async function handleFileWithSave(e) {
     alert('L-shop Supabase modul ikke loadet. Tjek at lshop-supabase.js er deployet.');
     return;
   }
-  if (!getSb()) {
+  if (!getSB()) {
     alert('Supabase ikke konfigureret. Indstil URL og key under Indstillinger først.');
     return;
   }
@@ -4317,7 +4317,7 @@ async function handleFileWithSave(e) {
 
 // Auto-load L-shop katalog fra Supabase ved sidestart (hvis konfigureret)
 setTimeout(() => {
-  if (window.lshopSupabase && getSb()) {
+  if (window.lshopSupabase && getSB()) {
     window.lshopSupabase.loadLshopFromSupabase();
   }
 }, 800);

@@ -7,7 +7,7 @@
        <script src="lshop-supabase.js"></script>
 
    Forventer at globale variabler eksisterer:
-       - getSb()              → returnerer Supabase-klient (fra index.html)
+       - getSB()              → returnerer Supabase-klient (fra index.html)
        - garments[]           → global array (fra index.html)
        - calcSalePrice(cp)    → funktion (fra index.html)
        - dbLog(label, data)   → log-funktion (fra index.html)
@@ -39,7 +39,7 @@
 
   // ─── 1. AUTO-LOAD: Hent katalog + varianter + lager fra Supabase ─────
   async function loadLshopFromSupabase(opts = {}) {
-    const sb = global.getSb && global.getSb();
+    const sb = global.getSB && global.getSB();
     if (!sb) { global.dbLog && global.dbLog('Lshop auto-load', 'Supabase ikke klar — springer over'); return false; }
 
     const status = document.getElementById('garmentStatus');
@@ -253,7 +253,7 @@
 
   // ─── 3. SAVE: Push records til Supabase ──────────────────────────────
   async function saveLshopToSupabase(products, variants, opts = {}) {
-    const sb = global.getSb && global.getSb();
+    const sb = global.getSB && global.getSB();
     if (!sb) throw new Error('Supabase ikke konfigureret');
 
     const status   = document.getElementById('garmentStatus');
