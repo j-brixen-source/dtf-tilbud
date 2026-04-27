@@ -4,12 +4,19 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.053
+  Version: 1.054
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.053  (2026-04-27)  ⭐ Aktuel
+  v1.054  (2026-04-27)  ⭐ Aktuel
+          • Fix: SS produktbilleder vises igen (window.ssColorCodes
+            genopbygges fra Supabase color_code_map)
+          • Fix: L-shop lager-badges vises nu pr. (farve, størrelse) —
+            samme som SS — UI-checken er ikke længere kun for SS
+          • Cache-buster på lshop-supabase.js?v=7
+
+  v1.053  (2026-04-27)
           • Stanley Stella → server-side auto-sync (1× dagligt kl. 06:00)
           • Variant-priser for Stanley Stella (pris pr. farve+størrelse)
           • Login-felter + sync-knap fjernet (auto-load fra Supabase)
@@ -55,14 +62,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.053 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.054 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.0/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="lshop-supabase.js?v=6"></script>
+<script src="lshop-supabase.js?v=7"></script>
 <style>
   /* ── SÆT DIN API-NØGLE HER ── */
   /* Se linjen: const API_KEY = "DIN-NØGLE-HER"; i scriptet nedenfor */
@@ -739,7 +746,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.053 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
+  <div class="header-tag">v1.054 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
 </div>
 
 <div class="layout">
@@ -1949,9 +1956,9 @@ function renderGarmentLines() {
     const totalQty = Object.values(gl.sizeQtys||{}).reduce((s,v)=>s+(+v||0),0) + (+gl.manualQty||0);
     const mu = gl.costPrice>0 ? getMarkup(gl.costPrice) : 0;
 
-    // Lagerstatus pr. størrelse (kun SS har det)
+    // Lagerstatus pr. størrelse — vises hvis vi har stock data (SS og L-shop fra Supabase)
     const sizeStockMap = (gl.colorSizeStockMap && gl.selectedColor) ? (gl.colorSizeStockMap[gl.selectedColor]||{}) : {};
-    const hasStock = gl.fromSS && gl.selectedColor && Object.keys(sizeStockMap).length > 0;
+    const hasStock = gl.selectedColor && Object.keys(sizeStockMap).length > 0;
 
     const sizeInputs = sizes.map(s=>{
       const stock = sizeStockMap[s];
