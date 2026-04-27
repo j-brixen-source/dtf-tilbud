@@ -37,6 +37,28 @@
     });
   }
 
+  // PostgREST returnerer max 1000 rækker pr. kald.
+  // Denne funktion paginerer gennem ALLE rækker via .range().
+  async function fetchAllRows(sb, table, selectStr = '*', progressCb = null) {
+    const PAGE = 1000;
+    const all = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await sb
+        .from(table)
+        .select(selectStr)
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`${table}: ${error.message}`);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (progressCb) progressCb(all.length);
+      if (data.length < PAGE) break;  // sidste side
+      from += PAGE;
+    }
+    return all;
+  }
+
+
   // ─── 1. AUTO-LOAD: Hent katalog + varianter + lager fra Supabase ─────
   async function loadLshopFromSupabase(opts = {}) {
     const sb = global.getSB && global.getSB();
@@ -46,20 +68,19 @@
     if (status) status.innerHTML = '<span style="color:var(--muted);font-size:12px">⏳ Henter L-shop fra Supabase...</span>';
 
     try {
-      // Hent alle tre tabeller parallelt
-      const [pRes, vRes, sRes] = await Promise.all([
-        sb.from('lshop_products').select('*'),
-        sb.from('lshop_variants').select('*'),
-        sb.from('lshop_stock').select('article_number, stock_qty, last_updated')
-      ]);
+      // Hent alle tre tabeller med paginering (PostgREST max 1000 rækker pr. kald)
+      if (status) status.innerHTML = '<span style="color:var(--muted);font-size:12px">⏳ Henter L-shop fra Supabase (kan tage 30-60 sek)...</span>';
 
-      if (pRes.error) throw new Error('lshop_products: ' + pRes.error.message);
-      if (vRes.error) throw new Error('lshop_variants: ' + vRes.error.message);
-      if (sRes.error) throw new Error('lshop_stock: '   + sRes.error.message);
+      const products = await fetchAllRows(sb, 'lshop_products', '*',
+        n => { if (status && n % 2000 === 0) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ Henter produkter... ${n}</span>`; });
 
-      const products = pRes.data || [];
-      const variants = vRes.data || [];
-      const stock    = sRes.data || [];
+      if (status) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ Henter ${products.length.toLocaleString()} produkter ✓ — Henter varianter...</span>`;
+      const variants = await fetchAllRows(sb, 'lshop_variants', '*',
+        n => { if (status && n % 10000 === 0) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ Henter varianter... ${n.toLocaleString()}/${products.length ? '~178k' : '?'}</span>`; });
+
+      if (status) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ Henter varianter ✓ ${variants.length.toLocaleString()} — Henter lager...</span>`;
+      const stock = await fetchAllRows(sb, 'lshop_stock', 'article_number, stock_qty, last_updated',
+        n => { if (status && n % 20000 === 0) status.innerHTML = `<span style="color:var(--muted);font-size:12px">⏳ Henter lager... ${n.toLocaleString()}</span>`; });
 
       global.dbLog && global.dbLog('Supabase lshop hentet', {
         products: products.length, variants: variants.length, stock: stock.length
