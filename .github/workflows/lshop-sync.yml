@@ -76,7 +76,7 @@ jobs:
                 .pipe(csv({ separator: ';' }))
                 .on('data', (row) => {
                   // Process L-shop stock data - handle multiple column name variations
-                  const articleNr = row.ArticleNr || row['Article Nr'] || row.articlenr || row.ArticleNo;
+                  const articleNr = row.article || row.ArticleNr || row['Article Nr'] || row.articlenr || row.ArticleNo;
                   const stockQty = parseInt(row.Stock || row.Qty || row.stock || row.Quantity || '0');
                   
                   if (articleNr && !isNaN(stockQty)) {
