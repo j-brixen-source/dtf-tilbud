@@ -1,0 +1,56 @@
+name: Debug CSV Inspector
+on:
+  workflow_dispatch:
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install basic-ftp
+      - env:
+          LSHOP_FTP_HOST: ${{ secrets.LSHOP_FTP_HOST }}
+          LSHOP_FTP_USER: ${{ secrets.LSHOP_FTP_USER }}
+          LSHOP_FTP_PASS: ${{ secrets.LSHOP_FTP_PASS }}
+          LSHOP_FTP_PORT: ${{ secrets.LSHOP_FTP_PORT }}
+        run: |
+          cat > debug.js <<'EOF'
+          const ftp = require('basic-ftp');
+          const fs = require('fs');
+          (async () => {
+            const c = new ftp.Client();
+            try {
+              await c.access({
+                host: process.env.LSHOP_FTP_HOST,
+                user: process.env.LSHOP_FTP_USER,
+                password: process.env.LSHOP_FTP_PASS,
+                port: parseInt(process.env.LSHOP_FTP_PORT || '21'),
+                secure: false
+              });
+              console.log('CWD: ' + (await c.pwd()));
+              console.log('--- File listing ---');
+              const list = await c.list();
+              for (const f of list) console.log((f.isDirectory?'DIR ':'FILE')+'\t'+f.size+'\t'+f.name);
+              console.log('--- End listing ---');
+              try {
+                await c.downloadTo('stockfile.csv','stockfile.csv');
+                const stat = fs.statSync('stockfile.csv');
+                console.log('Downloaded stockfile.csv ('+stat.size+' bytes)');
+                const txt = fs.readFileSync('stockfile.csv','utf8');
+                const ls = txt.split(/\r?\n/);
+                console.log('Total lines: '+ls.length);
+                console.log('--- First 20 lines ---');
+                for (let i=0;i<Math.min(20,ls.length);i++) console.log((i+1)+': '+ls[i]);
+                console.log('--- End preview ---');
+                if (ls[0]) {
+                  const semi=(ls[0].match(/;/g)||[]).length;
+                  const comma=(ls[0].match(/,/g)||[]).length;
+                  const tab=(ls[0].match(/\t/g)||[]).length;
+                  console.log('Header sep counts: ;='+semi+' ,='+comma+' tab='+tab);
+                }
+              } catch(e) { console.log('Could not download: '+e.message); }
+            } finally { c.close(); }
+          })().catch(e=>{console.error(e);process.exit(1);});
+          EOF
+          node debug.js
