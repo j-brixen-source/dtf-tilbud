@@ -1,0 +1,295 @@
+name: Stanley Stella Sync
+
+# Kører 1× dagligt kl. 06:00 CET (= 05:00 UTC)
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:        # Manuel trigger via GitHub UI
+
+jobs:
+  sync-stanley:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install @supabase/supabase-js
+
+      - name: Sync Stanley Stella catalog from API to Supabase
+        env:
+          SS_USER:      ${{ secrets.SS_USER }}
+          SS_PASSWORD:  ${{ secrets.SS_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          cat > sync-stanley.js << 'SCRIPT_EOF'
+          const { createClient } = require('@supabase/supabase-js');
+
+          const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
+
+          // ── Rens secrets for almindelige copy-paste-fejl ──
+          function cleanEnv(name) {
+            let val = process.env[name] || '';
+            return val.trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
+          }
+          const SUPABASE_URL = cleanEnv('SUPABASE_URL');
+          const SUPABASE_KEY = cleanEnv('SUPABASE_KEY');
+          const SS_USER      = (process.env.SS_USER     || '').trim();
+          const SS_PASS      = (process.env.SS_PASSWORD || '').trim();
+
+          if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase secrets mangler');
+          if (!SS_USER || !SS_PASS)           throw new Error('SS credentials mangler');
+
+          const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+          // ── Kald SS API (JSON-RPC 2.0 format) ────────────────────────
+          async function callSS(endpoint) {
+            const url = `https://api.stanleystella.com/webrequest/${endpoint}`;
+            const payload = {
+              jsonrpc: "2.0",
+              method: "call",
+              params: {
+                db_name: "production_api",
+                user: SS_USER,
+                password: SS_PASS,
+                LanguageCode: "en_GB",
+                Published: true
+              }
+            };
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status} fra ${endpoint}`);
+            const json = await res.json();
+            if (typeof json.result === 'string' && json.result.startsWith('JSON')) {
+              throw new Error(`SS API fejl: ${json.result}`);
+            }
+            return typeof json.result === 'string' ? JSON.parse(json.result) : json.result;
+          }
+
+          // ── Hex-padding hjælper ──
+          function normalizeHex(hex) {
+            if (!hex) return '';
+            let h = String(hex).replace('#', '').trim();
+            if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+            if (h.length < 6) h = h.padStart(6, '0');
+            if (h.length !== 6) return '';
+            return '#' + h.toUpperCase();
+          }
+
+          // ── Hent farver ──
+          async function fetchColors() {
+            log('🎨 Henter farver...');
+            const colors = await callSS('color/get_json');
+            if (!Array.isArray(colors)) throw new Error('Farver er ikke array');
+            log(`   ${colors.length} farver hentet`);
+            const hexMap = {};
+            const codeMap = {};
+            colors.forEach(c => {
+              const name = c.ColorName || c.color_name || c.Name || '';
+              const code = c.ColorCode || c.color_code || c.Code || '';
+              const hex  = normalizeHex(c.ColorHex || c.color_hex || c.Hex || c.HexCode || c.hex || '');
+              if (name && hex)  hexMap[name]  = hex;
+              if (name && code) codeMap[name] = code;
+            });
+            return { hexMap, codeMap };
+          }
+
+          // ── Hent priser pr. variant (B2BSKUREF) ──
+          async function fetchPrices() {
+            log('💰 Henter priser...');
+            const prices = await callSS('products/get_prices');
+            if (!Array.isArray(prices)) throw new Error('Priser er ikke array');
+            log(`   ${prices.length} pris-records hentet`);
+            const priceMap = {};
+            prices.forEach(p => {
+              const sku = p.B2BSKUREF || p.SKU || p.sku;
+              const eur = parseFloat(p.PurchasePrice || p.purchase_price || p.Price || p.price || 0);
+              if (sku && eur > 0) priceMap[sku] = eur;
+            });
+            return priceMap;
+          }
+
+          // ── Hent varianter (StyleCode + Color + Size + Stock) ──
+          async function fetchVariants() {
+            log('📦 Henter varianter...');
+            const variants = await callSS('products/get_json');
+            if (!Array.isArray(variants)) throw new Error('Varianter er ikke array');
+            log(`   ${variants.length} variant-records hentet`);
+            return variants;
+          }
+
+          // ── Hent styles (style-niveau metadata) ──
+          async function fetchStyles() {
+            log('👕 Henter styles (V2)...');
+            const styles = await callSS('productsV2/get_json');
+            if (!Array.isArray(styles)) throw new Error('Styles er ikke array');
+            log(`   ${styles.length} style-records hentet`);
+            return styles;
+          }
+
+          // ── Sortér størrelser ──
+          const SIZE_ORDER = ['3XS','XXS','XS','S','M','L','XL','XXL','2XL','3XL','4XL','5XL','6XL','7XL','8XL'];
+          function sortSizes(set) {
+            return [...set].sort((a, b) => {
+              const ai = SIZE_ORDER.indexOf(a), bi = SIZE_ORDER.indexOf(b);
+              if (ai >= 0 && bi >= 0) return ai - bi;
+              if (ai >= 0) return -1;
+              if (bi >= 0) return 1;
+              return a.localeCompare(b);
+            });
+          }
+
+          // ── Aggregér variant-data til style-niveau ──
+          function buildProducts(styles, variants, priceMap, hexMap, codeMap) {
+            const variantsByStyle = {};
+            variants.forEach(v => {
+              const sc = v.StyleCode || v.style_code || '';
+              if (!sc) return;
+              if (!variantsByStyle[sc]) variantsByStyle[sc] = [];
+              variantsByStyle[sc].push(v);
+            });
+
+            const products = [];
+            const variantRecords = [];
+
+            styles.forEach(s => {
+              const styleCode = s.StyleCode || s.style_code || '';
+              const styleName = s.StyleName || s.style_name || s.Name || '';
+              if (!styleCode || !styleName) return;
+
+              const styleVariants = variantsByStyle[styleCode] || [];
+              if (styleVariants.length === 0) return;  // skip styles uden varianter
+
+              const colorSizeMap = {};
+              const colorHexMap  = {};
+              const colorCodeMap = {};
+              const allColors    = new Set();
+              const allSizes     = new Set();
+
+              styleVariants.forEach(v => {
+                const sku       = v.B2BSKUREF || v.SKU || v.sku || '';
+                const colorName = v.Color     || v.ColorName || v.color_name || '';
+                const sizeName  = v.SizeCode  || v.SizeName  || v.size_name || v.Size || '';
+                const stock     = parseInt(v.Stock || 0) || 0;
+
+                if (!sku) return;
+                const ek_eur = priceMap[sku] || 0;
+                // Vi gemmer også varianter uden pris — kan blive tilføjet senere af SS
+                const colorCode = codeMap[colorName] || '';
+                const colorHex  = hexMap[colorName]  || '';
+
+                variantRecords.push({
+                  sku,
+                  style_code:   styleCode,
+                  color:        colorName,
+                  color_code:   colorCode,
+                  size:         sizeName,
+                  color_hex:    colorHex,
+                  ek_price_eur: Number(ek_eur.toFixed(2)),
+                  stock_qty:    stock
+                });
+
+                if (colorName) {
+                  allColors.add(colorName);
+                  if (!colorSizeMap[colorName]) colorSizeMap[colorName] = new Set();
+                  if (sizeName) colorSizeMap[colorName].add(sizeName);
+                  if (colorHex && !colorHexMap[colorName])  colorHexMap[colorName]  = colorHex;
+                  if (colorCode && !colorCodeMap[colorName]) colorCodeMap[colorName] = colorCode;
+                }
+                if (sizeName) allSizes.add(sizeName);
+              });
+
+              // Konvertér Set'er til sorterede arrays
+              const colorSizeMapArr = {};
+              Object.entries(colorSizeMap).forEach(([c, s]) => { colorSizeMapArr[c] = sortSizes(s); });
+
+              products.push({
+                style_code:     styleCode,
+                name:           styleName,
+                description:    s.Description || s.ShortDescription || '',
+                brand:          'Stanley Stella',
+                product_type:   s.Category || s.MainCategory || '',
+                colors:         [...allColors].sort(),
+                sizes:          sortSizes(allSizes),
+                color_size_map: colorSizeMapArr,
+                color_hex_map:  colorHexMap,
+                color_code_map: colorCodeMap,
+                search_text:    `${styleName} ${styleCode} stanley stella`.toLowerCase()
+              });
+            });
+
+            log(`✅ Aggregeret: ${products.length} styles, ${variantRecords.length} varianter`);
+            return { products, variants: variantRecords };
+          }
+
+          // ── PostgREST max 1000 rækker pr. kald — paginér ved upsert ──
+          async function upsertBatched(table, rows, conflictKey) {
+            const BATCH = 500;
+            for (let i = 0; i < rows.length; i += BATCH) {
+              const batch = rows.slice(i, i + BATCH);
+              const { error } = await supabase
+                .from(table)
+                .upsert(batch, { onConflict: conflictKey });
+              if (error) throw new Error(`${table} batch ${i}: ${error.message}`);
+            }
+          }
+
+          // ── Pre-flight check ──
+          async function preflight() {
+            log('🔍 Pre-flight: tester Supabase forbindelse...');
+            const { error } = await supabase.from('stanley_products').select('*', { count: 'exact', head: true });
+            if (error) throw new Error(`Supabase fejler: ${error.message}`);
+            log('✅ Supabase OK');
+          }
+
+          // ── Main ──
+          (async () => {
+            try {
+              log('🚀 Starting Stanley Stella sync');
+              await preflight();
+
+              const [{ hexMap, codeMap }, priceMap, variants, styles] = await Promise.all([
+                fetchColors(),
+                fetchPrices(),
+                fetchVariants(),
+                fetchStyles()
+              ]);
+
+              const { products, variants: variantRecords } = buildProducts(
+                styles, variants, priceMap, hexMap, codeMap
+              );
+
+              log(`💾 Upserting ${products.length} products...`);
+              await upsertBatched('stanley_products', products, 'style_code');
+
+              log(`💾 Upserting ${variantRecords.length} variants...`);
+              await upsertBatched('stanley_variants', variantRecords, 'sku');
+
+              // Cleanup: fjern stale styles/variants (varer der ikke længere er i SS katalog)
+              const activeStyleCodes = new Set(products.map(p => p.style_code));
+              const activeSkus       = new Set(variantRecords.map(v => v.sku));
+              log(`🗑️  Cleanup: fjerner stale poster...`);
+              // (Vi sletter ikke aktivt — Supabase håndterer kun upsert; gamle poster bliver liggende.
+              // Hvis du vil have aktiv cleanup, så kan vi tilføje DELETE WHERE style_code NOT IN (...) senere.)
+
+              log(`✨ DONE — ${products.length} styles, ${variantRecords.length} varianter synced`);
+            } catch (err) {
+              console.error(`💥 SYNC FAILED: ${err.message}`);
+              if (err.stack) console.error(err.stack);
+              process.exit(1);
+            }
+          })();
+          SCRIPT_EOF
+
+          node sync-stanley.js
