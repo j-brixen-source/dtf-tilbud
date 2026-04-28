@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.063
+  Version: 1.064
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.063  (2026-04-28)  ⭐ Aktuel — Stock-cap på antal-input + udvidet farveskift-validering
+  v1.064  (2026-04-28)  ⭐ Aktuel — TETOS logo i header + login-skærm
+          • Ny fil: TETOS_LOGO.png i repo-roden (26 KB, 800x212)
+          • Header: tekst-"TETOS" erstattet af logo-billede (32px høj)
+          • Login: logo placeret OVER det hvide kort på den mørke
+            baggrund — den dobbelte "TETOS"-tekst + undertekst er fjernet
+            fra kortet (logo'et siger det allerede)
+          • CSS: ny .header-logo-img class
+
+  v1.063  (2026-04-28) — Stock-cap på antal-input + udvidet farveskift-validering
           • Ny setSizeQty()-funktion: cap antal til lager-niveau ved input
           • Hvis user taster qty > stock → besked + auto-cap til stock
           • <input> får dynamisk max=stock (browser-spinner respekterer det)
@@ -139,7 +147,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.063 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.064 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -198,6 +206,11 @@
     font-weight: 500;
     letter-spacing: 0.08em;
     opacity: 0.9;
+  }
+  .header-logo-img {
+    height: 32px;       /* fits 52px header med ~10px padding top/bottom */
+    width: auto;        /* bevar aspect-ratio (800x212 ≈ 3.77:1 → ~120px bred) */
+    display: block;
   }
   .header-sep { flex: 1; }
   .header-tag {
@@ -778,32 +791,31 @@
      LOGIN SCREEN (v1.057+) — vises hvis ingen aktiv Supabase-session
      ════════════════════════════════════════════════════════════ -->
 <div id="loginOverlay" style="display:none;position:fixed;inset:0;background:#1a1a1a;z-index:9999;align-items:center;justify-content:center">
-  <div style="background:white;border-radius:12px;padding:36px 40px;min-width:380px;max-width:440px;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
-    <div style="text-align:center;margin-bottom:28px">
-      <div style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin-bottom:6px">TETOS</div>
-      <div style="font-size:13px;color:#888">Tekstil-tryk.dk Ordre System</div>
-    </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
+    <img src="/TETOS_LOGO.png" alt="TETOS — Tekstil-tryk.dk Ordre System"
+      style="max-width:340px;width:80vw;height:auto">
+    <div style="background:white;border-radius:12px;padding:36px 40px;min-width:380px;max-width:440px;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
+      <form id="loginForm" onsubmit="return doLogin(event)">
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:12px;color:#666;margin-bottom:4px">Email</label>
+          <input type="email" id="loginEmail" required autocomplete="email" autofocus
+            style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:18px">
+          <label style="display:block;font-size:12px;color:#666;margin-bottom:4px">Kodeord</label>
+          <input type="password" id="loginPassword" required autocomplete="current-password"
+            style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box">
+        </div>
+        <button type="submit" id="loginBtn"
+          style="width:100%;padding:11px;background:#000;color:white;border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit">
+          Log ind →
+        </button>
+        <div id="loginError" style="margin-top:12px;font-size:12px;color:#dc2626;text-align:center;min-height:16px"></div>
+      </form>
 
-    <form id="loginForm" onsubmit="return doLogin(event)">
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;color:#666;margin-bottom:4px">Email</label>
-        <input type="email" id="loginEmail" required autocomplete="email" autofocus
-          style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box">
+      <div style="margin-top:24px;padding-top:18px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">
+        Glemt kodeord? Kontakt administrator.
       </div>
-      <div style="margin-bottom:18px">
-        <label style="display:block;font-size:12px;color:#666;margin-bottom:4px">Kodeord</label>
-        <input type="password" id="loginPassword" required autocomplete="current-password"
-          style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box">
-      </div>
-      <button type="submit" id="loginBtn"
-        style="width:100%;padding:11px;background:#000;color:white;border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit">
-        Log ind →
-      </button>
-      <div id="loginError" style="margin-top:12px;font-size:12px;color:#dc2626;text-align:center;min-height:16px"></div>
-    </form>
-
-    <div style="margin-top:24px;padding-top:18px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">
-      Glemt kodeord? Kontakt administrator.
     </div>
   </div>
 </div>
@@ -882,9 +894,9 @@
 </div>
 
 <div class="header">
-  <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
+  <img src="/TETOS_LOGO.png" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.063 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.064 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
