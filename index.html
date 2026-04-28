@@ -4,12 +4,24 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.060
+  Version: 1.061
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.060  (2026-04-28)  ⭐ Aktuel — Cleanup: fjern resterende anthropic_key-rester
+  v1.061  (2026-04-28)  ⭐ Aktuel — Brand/Model søgefelter + ny startside
+          • Inline søgefelt ved siden af Brand-label (matcher farve-mønstret)
+          • Inline søgefelt ved siden af Vare/Model-label
+          • Begge: filtrér dropdown-options live + auto-vælg ved 1 match
+          • Søgning på Vare/Model matcher både modelnavn OG SKU
+          • State pr. tøjlinje: gl.brandSearch + gl.modelSearch
+          • CSS-klasserne color-field-label/color-search-mini generaliseret
+            til også at dække field-label-with-search/field-search-mini
+          • Startside ændret fra Indstillinger til Nyt tilbud (panel-quote)
+          • showPanel('quote') kaldes efter login så renderGarmentLines+recalc
+            initialiseres korrekt
+
+  v1.060  (2026-04-28) — Cleanup: fjern resterende anthropic_key-rester
           • Hidden input <input id="anthropic_key"> fjernet fra Indstillinger
           • Dead div #anthropic_status fjernet (skrevet til af tidligere
             saveCredentials, som blev fjernet i v1.059)
@@ -107,7 +119,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.060 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.061 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -716,8 +728,9 @@
     text-align: center;
   }
 
-  /* Farve-række med søgefelt */
-  .color-field-label {
+  /* Felt-label med inline søgefelt (Farve, Brand, Model) */
+  .color-field-label,
+  .field-label-with-search {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -725,7 +738,8 @@
     margin-bottom: 3px;
     min-height: 18px;
   }
-  .color-search-mini {
+  .color-search-mini,
+  .field-search-mini {
     font-size: 11px;
     padding: 2px 6px;
     border: 1px solid var(--border2);
@@ -733,7 +747,8 @@
     width: 90px;
     background: white;
   }
-  .color-search-mini:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+  .color-search-mini:focus,
+  .field-search-mini:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 
 </style>
 </head>
@@ -849,7 +864,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.060 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.061 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -861,14 +876,14 @@
   <!-- SIDEBAR -->
   <div class="sidebar">
     <div class="nav-section">Opsætning</div>
-    <div class="nav-item active" onclick="showPanel('settings')"><div class="nav-dot"></div>Indstillinger</div>
+    <div class="nav-item" onclick="showPanel('settings')"><div class="nav-dot"></div>Indstillinger</div>
     <div class="nav-item" onclick="showPanel('api')"><div class="nav-dot"></div>API-adgange</div>
     <div class="nav-section">Kunder</div>
     <div class="nav-item" onclick="showPanel('kunder')"><div class="nav-dot"></div>Kundeoversigt</div>
     <div class="nav-item" onclick="showPanel('opret-kunde')"><div class="nav-dot"></div>Opret kunde</div>
     <div class="nav-section">Tilbud & Ordrer</div>
     <div class="nav-item" onclick="showPanel('tilbud-liste')"><div class="nav-dot"></div>Alle tilbud</div>
-    <div class="nav-item" onclick="showPanel('quote')"><div class="nav-dot"></div>Nyt tilbud</div>
+    <div class="nav-item active" onclick="showPanel('quote')"><div class="nav-dot"></div>Nyt tilbud</div>
     <div class="nav-section">Data</div>
     <div class="nav-item" onclick="showPanel('garments')"><div class="nav-dot"></div>Tøjliste</div>
     <div class="nav-item" onclick="showPanel('debug')"><div class="nav-dot"></div>Debug log</div>
@@ -878,7 +893,7 @@
   <div class="main">
 
     <!-- ── SETTINGS ── -->
-    <div id="panel-settings" class="panel active">
+    <div id="panel-settings" class="panel">
 
       <!-- ───── SEKTION 1: KATALOG-STATUS (toplinjer) ───── -->
       <div class="card">
@@ -1014,7 +1029,7 @@
     </div>
 
     <!-- ── QUOTE ── -->
-    <div id="panel-quote" class="panel">
+    <div id="panel-quote" class="panel active">
 
       <!-- Missing items -->
       <div id="missingBox" style="display:none" class="missing-box">
@@ -1353,7 +1368,8 @@ window.__setGarments = (arr) => { garments = arr; window.garments = arr; };
 let activePos = {}; // DEPRECATED v1.050 — beholdt som tom for bagudkompatibilitet
 function defaultGarmentLine() {
   return {
-    sku:'', name:'', brand:'', brandFilter:'', costPrice:0, salePrice:0,
+    sku:'', name:'', brand:'', brandFilter:'', brandSearch:'', modelSearch:'',
+    costPrice:0, salePrice:0,
     availSizes:[], availColors:[], colorSizeMap:{}, selectedColor:'',
     sizeQtys:{}, manualQty:0,
     positions: {
@@ -2093,12 +2109,26 @@ function renderGarmentLines() {
       ? garments.filter(g=>g.brand===gl.brandFilter)
       : garments;
 
+    // v1.061: Søge-filtre på Brand og Vare/Model
+    const brandSearchQ = (gl.brandSearch || '').toLowerCase().trim();
+    const visibleBrands = brandSearchQ
+      ? allBrands.filter(b => b.toLowerCase().includes(brandSearchQ))
+      : allBrands;
+
+    const modelSearchQ = (gl.modelSearch || '').toLowerCase().trim();
+    const visibleGarments = modelSearchQ
+      ? filteredGarments.filter(g => {
+          const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
+          return modelName.toLowerCase().includes(modelSearchQ) || g.sku.toLowerCase().includes(modelSearchQ);
+        })
+      : filteredGarments;
+
     // Vare-dropdown — vis modelnavn + SKU så man kan søge på begge
-    const opts = filteredGarments.map(g=>{
+    const opts = visibleGarments.map(g=>{
       const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
       return `<option value="${g.sku}" ${g.sku===gl.sku?'selected':''}>${modelName} · ${g.sku}</option>`;
     }).join('');
-    const brandOpts = allBrands.map(b=>`<option value="${b}" ${b===gl.brandFilter?'selected':''}>${b}</option>`).join('');
+    const brandOpts = visibleBrands.map(b=>`<option value="${b}" ${b===gl.brandFilter?'selected':''}>${b}</option>`).join('');
 
     // Farver — kompakt knap der åbner pop-up med farveswatches
     const availColors = gl.availColors||[];
@@ -2148,14 +2178,24 @@ function renderGarmentLines() {
       <div class="gline-main">
       <div style="display:grid;grid-template-columns:minmax(120px,1.2fr) minmax(180px,2.2fr) minmax(140px,1.6fr) minmax(90px,1fr) auto;gap:10px;align-items:start;margin-bottom:${sizes.length?'10px':'4px'}">
         <div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Brand</div>
-          <select onchange="garmentLinesData[${i}].brandFilter=this.value;garmentLinesData[${i}].sku='';garmentLinesData[${i}].name='';garmentLinesData[${i}].costPrice=0;garmentLinesData[${i}].salePrice=0;garmentLinesData[${i}].availColors=[];garmentLinesData[${i}].availSizes=[];garmentLinesData[${i}].sizeQtys={};renderGarmentLines()" style="width:100%;font-size:13px">
+          <div class="field-label-with-search">
+            <span style="font-size:11px;color:var(--muted)">Brand</span>
+            ${allBrands.length > 0 ? `<input type="text" class="field-search-mini" placeholder="🔍 søg..."
+              value="${(gl.brandSearch||'').replace(/"/g,'&quot;')}"
+              oninput="searchBrandInline(${i}, this.value)" onkeydown="if(event.key==='Enter')event.preventDefault()">` : ''}
+          </div>
+          <select class="brand-select" onchange="garmentLinesData[${i}].brandFilter=this.value;garmentLinesData[${i}].sku='';garmentLinesData[${i}].name='';garmentLinesData[${i}].costPrice=0;garmentLinesData[${i}].salePrice=0;garmentLinesData[${i}].availColors=[];garmentLinesData[${i}].availSizes=[];garmentLinesData[${i}].sizeQtys={};renderGarmentLines()" style="width:100%;font-size:13px">
             <option value="">– Alle brands –</option>${brandOpts}
           </select>
         </div>
         <div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Vare / Model</div>
-          <select onchange="selectGarment(${i},this.value)" style="width:100%;font-size:13px">
+          <div class="field-label-with-search">
+            <span style="font-size:11px;color:var(--muted)">Vare / Model</span>
+            ${filteredGarments.length > 0 ? `<input type="text" class="field-search-mini" placeholder="🔍 søg..."
+              value="${(gl.modelSearch||'').replace(/"/g,'&quot;')}"
+              oninput="searchModelInline(${i}, this.value)" onkeydown="if(event.key==='Enter')event.preventDefault()">` : ''}
+          </div>
+          <select class="model-select" onchange="selectGarment(${i},this.value)" style="width:100%;font-size:13px">
             <option value="">– Vælg vare –</option>${opts}
           </select>
         </div>
@@ -2359,6 +2399,82 @@ function buildLineImageHTML(i, gl) {
 
 // Bagudkompatibilitet — gør ingenting nu (image-panel er pr. linje)
 function updateProductImages() { /* deprecated — billeder er nu pr. linje */ }
+
+
+// ── v1.061: Inline søgning ved siden af Brand label ──
+// Filtrér brand-dropdown live; auto-vælg ved præcis 1 match (samme idé som farve).
+function searchBrandInline(lineIdx, query) {
+  const gl = garmentLinesData[lineIdx];
+  if(!gl) return;
+  const q = (query||'').toLowerCase().trim();
+  gl.brandSearch = q;
+
+  // Auto-select ved præcis 1 match (kun hvis det ikke allerede er valgt)
+  if(q) {
+    const allBrands = [...new Set(garments.map(g=>g.brand).filter(Boolean))];
+    const matches = allBrands.filter(b => b.toLowerCase().includes(q));
+    if(matches.length === 1 && gl.brandFilter !== matches[0]) {
+      gl.brandFilter = matches[0];
+      gl.brandSearch = '';     // Ryd søget — handlingen er færdig
+      gl.modelSearch = '';     // Ryd model-søg også (ny brand → ny model-liste)
+      gl.sku = ''; gl.name = ''; gl.costPrice = 0; gl.salePrice = 0;
+      gl.availColors = []; gl.availSizes = []; gl.sizeQtys = {};
+      renderGarmentLines();
+      return;
+    }
+  }
+
+  // 0 eller flere matches → opdatér KUN brand-dropdownens options i DOM,
+  // så fokus i inputtet bevares (Safari ignorerer display:none på <option>,
+  // så vi rebuilder innerHTML for pålidelig filtering).
+  const lineDiv = document.querySelectorAll('.gline')[lineIdx];
+  if(!lineDiv) return;
+  const sel = lineDiv.querySelector('.brand-select');
+  if(!sel) return;
+  const allBrands = [...new Set(garments.map(g=>g.brand).filter(Boolean))].sort();
+  const filtered = q ? allBrands.filter(b=>b.toLowerCase().includes(q)) : allBrands;
+  const opts = filtered.map(b=>`<option value="${b}" ${b===gl.brandFilter?'selected':''}>${b}</option>`).join('');
+  sel.innerHTML = '<option value="">– Alle brands –</option>' + opts;
+}
+
+// ── v1.061: Inline søgning ved siden af Vare / Model label ──
+// Matcher både modelnavn og SKU; auto-vælg ved præcis 1 match.
+function searchModelInline(lineIdx, query) {
+  const gl = garmentLinesData[lineIdx];
+  if(!gl) return;
+  const q = (query||'').toLowerCase().trim();
+  gl.modelSearch = q;
+
+  // Beregn brand-filtreret garment-liste (samme som i renderGarmentLines)
+  const filteredGarments = gl.brandFilter
+    ? garments.filter(g=>g.brand===gl.brandFilter)
+    : garments;
+
+  const matches = q
+    ? filteredGarments.filter(g => {
+        const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
+        return modelName.toLowerCase().includes(q) || g.sku.toLowerCase().includes(q);
+      })
+    : filteredGarments;
+
+  // Auto-select ved 1 match — selectGarment sørger for resten (renderGarmentLines, billeder, etc.)
+  if(q && matches.length === 1 && gl.sku !== matches[0].sku) {
+    gl.modelSearch = '';
+    selectGarment(lineIdx, matches[0].sku);
+    return;
+  }
+
+  // Ellers: opdatér kun model-dropdownens options i DOM, bevar fokus
+  const lineDiv = document.querySelectorAll('.gline')[lineIdx];
+  if(!lineDiv) return;
+  const sel = lineDiv.querySelector('.model-select');
+  if(!sel) return;
+  const opts = matches.map(g=>{
+    const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
+    return `<option value="${g.sku}" ${g.sku===gl.sku?'selected':''}>${modelName} · ${g.sku}</option>`;
+  }).join('');
+  sel.innerHTML = '<option value="">– Vælg vare –</option>' + opts;
+}
 
 
 // ── Inline farve-søgning ved siden af Farve label ──
@@ -4078,6 +4194,9 @@ function onAuthSuccess() {
   }
   // Hent medarbejder-listen og vis vælger hvis ingen valgt
   loadMedarbejdere();
+  // v1.061: Startsiden er nu Nyt tilbud — sørg for at panel-init køres
+  // (renderGarmentLines + recalc) nu hvor panelet allerede har klassen "active"
+  showPanel('quote');
 }
 
 // ════════════════════════════════════════════════════════════════════
