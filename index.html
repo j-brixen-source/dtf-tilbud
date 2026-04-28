@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.062
+  Version: 1.063
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.062  (2026-04-28)  ⭐ Aktuel — Bevar antal ved farveskift + udsolgt-advarsel
+  v1.063  (2026-04-28)  ⭐ Aktuel — Stock-cap på antal-input + udvidet farveskift-validering
+          • Ny setSizeQty()-funktion: cap antal til lager-niveau ved input
+          • Hvis user taster qty > stock → besked + auto-cap til stock
+          • <input> får dynamisk max=stock (browser-spinner respekterer det)
+          • selectColor() udvidet: cap qty (ikke kun drop) når
+            stock>0 men < ønsket antal i ny farve
+          • Pop-up grupperer nu "findes ikke" / "udsolgt" / "ikke nok på lager"
+            i særskilte sektioner — sidstnævnte viser "ønsket → tilgængelige"
+
+  v1.062  (2026-04-28) — Bevar antal ved farveskift + udsolgt-advarsel
           • selectColor() nulstiller IKKE længere alle sizeQtys ved farveskift
           • Bevar antal for størrelser der findes i ny farve OG har stock>0
             (eller hvor stock-data ikke kendes — så preserveres pr. default)
@@ -130,7 +139,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.062 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.063 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -875,7 +884,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.062 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.063 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -2174,12 +2183,14 @@ function renderGarmentLines() {
         if(stock < 10) return `<span class="size-stock low">${stock}</span>`;
         return `<span class="size-stock">${stock>999?'999+':stock}</span>`;
       })() : '';
+      // v1.063: max-attribut hvis stock kendes — browser-spinneren respekterer det
+      const maxAttr = (hasStock && typeof stock === 'number') ? ` max="${stock}"` : '';
       return `
       <div class="size-qty">
         <label>${s}</label>
         ${stockBadge}
-        <input type="number" min="0" value="${gl.sizeQtys[s]||''}" placeholder="0"
-          onchange="garmentLinesData[${i}].sizeQtys['${s}']=+this.value;recalc();updateLineTotals(${i})"
+        <input type="number" min="0"${maxAttr} value="${gl.sizeQtys[s]||''}" placeholder="0"
+          onchange="setSizeQty(${i},'${s}',this.value)"
           onkeydown="handleSizeKey(event,${i},'${s}')">
       </div>`;
     }).join('');
@@ -2277,6 +2288,40 @@ function updateLineTotals(i) {
   const total=Object.values(gl.sizeQtys||{}).reduce((s,v)=>s+(+v||0),0);
   const el=document.getElementById(`linetotal_${i}`);
   if(el) el.textContent = total>0?`· I alt: ${total} stk`:'';
+}
+
+// v1.063: Sæt antal pr. størrelse, capped til lager-niveau hvis kendt.
+// Kaldes fra <input>'s onchange. Hvis user har tastet mere end stock,
+// vis besked og cap automatisk; ellers light update via updateLineTotals.
+function setSizeQty(lineIdx, size, rawValue) {
+  const gl = garmentLinesData[lineIdx];
+  if (!gl) return;
+  let qty = +rawValue || 0;
+  if (qty < 0) qty = 0;
+
+  const stockMap = (gl.colorSizeStockMap && gl.selectedColor)
+    ? (gl.colorSizeStockMap[gl.selectedColor] || {})
+    : {};
+  const stock = stockMap[size];
+  const stockKnown = typeof stock === 'number';
+
+  if (stockKnown && qty > stock) {
+    // Cap + advis
+    setTimeout(() => alert(
+      `Kun ${stock} stk på lager i størrelse ${size} (${gl.selectedColor}).\n` +
+      `Antal er sat til ${stock}.`
+    ), 50);
+    qty = stock;
+    gl.sizeQtys[size] = qty;
+    recalc();
+    renderGarmentLines();   // re-render så input-feltets value matcher state
+    return;
+  }
+
+  // Normal vej — bevar fokus og opdatér totals
+  gl.sizeQtys[size] = qty;
+  recalc();
+  updateLineTotals(lineIdx);
 }
 
 function handleSizeKey(e,lineIdx,size){
@@ -2623,8 +2668,9 @@ function selectColor(i, color) {
   }
   // Hvis ingen colorSizeMap (SS varer) — BEHOLD availSizes som de er (fra g.sizes)
 
-  // ── v1.062: Bevar antal for størrelser der stadig er bestilbare i ny farve ──
-  // Forslag B: drop hvor størrelsen ikke findes ELLER er definitivt udsolgt (stock===0)
+  // ── v1.062/v1.063: Bevar antal for størrelser der stadig er bestilbare i ny farve ──
+  // Forslag B: drop hvor størrelsen ikke findes ELLER er definitivt udsolgt (stock===0).
+  // v1.063: cap (i stedet for drop) hvor stock>0 men < ønsket antal.
   const newAvailSizes = gl.availSizes || [];
   const newStockMap = (gl.colorSizeStockMap && color)
     ? (gl.colorSizeStockMap[color] || {})
@@ -2633,6 +2679,7 @@ function selectColor(i, color) {
 
   const droppedMissing = [];   // størrelse findes ikke i ny farve
   const droppedStock0  = [];   // størrelse findes men er udsolgt (stock===0)
+  const cappedStock    = [];   // v1.063: stock>0 men < ønsket → cap til stock
   const preservedQtys  = {};
 
   Object.entries(oldSizeQtys).forEach(([size, qtyRaw]) => {
@@ -2643,18 +2690,27 @@ function selectColor(i, color) {
       droppedMissing.push(size);
       return;  // findes ikke → drop
     }
-    if (hasStockData && newStockMap[size] === 0) {
-      droppedStock0.push(size);
-      return;  // definitivt udsolgt → drop
+    if (hasStockData) {
+      const stock = newStockMap[size];
+      if (stock === 0) {
+        droppedStock0.push(size);
+        return;  // definitivt udsolgt → drop
+      }
+      if (typeof stock === 'number' && stock < qty) {
+        // Stock>0 men ikke nok — cap til tilgængelig stock
+        cappedStock.push({ size, requested: qty, available: stock });
+        preservedQtys[size] = stock;
+        return;
+      }
     }
-    // Ellers: bevar (stock>0, ukendt stock, eller ingen stock-data overhovedet)
+    // Ellers: bevar (stock>0 og ≥ qty, ukendt stock, eller ingen stock-data overhovedet)
     preservedQtys[size] = qty;
   });
 
   gl.sizeQtys = preservedQtys;
 
-  // Pop-up hvis noget blev droppet — udskudt med setTimeout så DOM er færdig-rendret først
-  if (droppedMissing.length > 0 || droppedStock0.length > 0) {
+  // Pop-up hvis noget blev ændret — udskudt med setTimeout så DOM er færdig-rendret først
+  if (droppedMissing.length > 0 || droppedStock0.length > 0 || cappedStock.length > 0) {
     let msg = `Ved skift til "${color}":\n\n`;
     if (droppedMissing.length > 0) {
       msg += `Disse størrelser findes ikke i den nye farve:\n  ${droppedMissing.join(', ')}\n\n`;
@@ -2662,7 +2718,14 @@ function selectColor(i, color) {
     if (droppedStock0.length > 0) {
       msg += `Disse størrelser er udsolgt i den nye farve:\n  ${droppedStock0.join(', ')}\n\n`;
     }
-    msg += 'Antal er fjernet for ovenstående.';
+    if (cappedStock.length > 0) {
+      msg += `Disse størrelser har ikke nok på lager — antal er reduceret:\n`;
+      cappedStock.forEach(c => {
+        msg += `  ${c.size}: ${c.requested} ønsket → ${c.available} tilgængelige\n`;
+      });
+      msg += '\n';
+    }
+    msg += 'Antal er justeret.';
     setTimeout(() => alert(msg), 50);
   }
 
