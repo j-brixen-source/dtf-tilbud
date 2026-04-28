@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.058
+  Version: 1.059
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.058  (2026-04-28)  ⭐ Aktuel — Ryddet UI på Indstillinger og API-adgange
+  v1.059  (2026-04-28)  ⭐ Aktuel — Lag 2: Anthropic API-nøgle flyttet server-side
+          • Ny Netlify-function: netlify/functions/parse-email.js
+          • Klienten kalder /api/parse-email i stedet for api.anthropic.com direkte
+          • ANTHROPIC_KEY ligger nu kun i Netlify env vars — ikke i browseren
+          • Modelopgradering: claude-sonnet-4-5 → claude-sonnet-4-6 (current Sonnet, feb 2026)
+          • netlify.toml: /api/* redirecter til /.netlify/functions/* (force=true)
+          • UI: API-key-felt i Indstillinger erstattet af "Server-side"-status,
+            matchende Stanley Stella + L-shop. Hidden input bevaret for
+            bagudkompatibilitet med .env-config-loader.
+          • getApiKey() fjernet (ingen klient-side nøgle længere)
+          • Sikkerhed: 'anthropic-dangerous-direct-browser-access' header er nu
+            unødvendig fordi nøglen aldrig forlader serveren
+
+  v1.058  (2026-04-28) — Ryddet UI på Indstillinger og API-adgange
           • Indstillinger: 3 sektioner — Katalog-status, Priser, Avanceret
           • API-adgange: Medarbejdere først, Eksterne tjenester samlet,
             Database skjult under "Avanceret"
@@ -83,7 +96,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.058 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.059 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -825,7 +838,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.058 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.059 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -1113,18 +1126,16 @@
 
         <!-- Anthropic Claude AI -->
         <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
             <div>
               <div style="font-size:13px;font-weight:500">Anthropic Claude AI</div>
-              <div style="font-size:11px;color:var(--muted)">Bruges til AI-email-parsing</div>
+              <div style="font-size:11px;color:var(--muted)">Bruges til AI-email-parsing · ANTHROPIC_KEY ligger i Netlify env vars (ikke længere nødvendig her)</div>
             </div>
-            <span class="tag" id="anthropicStatusTag" style="font-size:10px">Lokal nøgle</span>
+            <span class="tag tag-green" id="anthropicStatusTag" style="font-size:10px">Server-side</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <input type="password" id="anthropic_key" placeholder="sk-ant-api03-..." style="flex:1;font-family:'DM Mono',monospace;font-size:11px" oninput="saveCredentials()">
-            <button class="btn btn-sm" onclick="toggleShow('anthropic_key',this)" style="font-size:11px">Vis</button>
-          </div>
-          <div id="anthropic_status" class="file-status" style="margin-top:6px"></div>
+          <!-- Hidden input bevaret for bagudkompatibilitet med .env-config-loader (linje ~4354). Værdien bruges ikke længere af klienten. -->
+          <input type="hidden" id="anthropic_key">
+          <div id="anthropic_status" class="file-status" style="display:none"></div>
         </div>
 
         <!-- Stanley Stella -->
@@ -1301,15 +1312,12 @@
 
 <script>
 // ════════════════════════════════════════
-//  API-adgange læses fra inputfelterne
-//  (kan stadig hardkodes her som fallback)
+//  API-adgange (kun SS — Anthropic-nøgle ligger nu server-side, v1.059)
 // ════════════════════════════════════════
-const API_KEY_DEFAULT     = "";
 const SS_USER_DEFAULT     = "";
 const SS_PASSWORD_DEFAULT = "";
 // ════════════════════════════════════════
 
-function getApiKey()  { return (document.getElementById('anthropic_key')?.value||'').trim() || API_KEY_DEFAULT; }
 function getSsUser()  { return (document.getElementById('ss_user')?.value||document.getElementById('ss_user_inline')?.value||'').trim() || SS_USER_DEFAULT; }
 function getSsPass()  { return (document.getElementById('ss_pass')?.value||document.getElementById('ss_pass_inline')?.value||'').trim() || SS_PASSWORD_DEFAULT; }
 
@@ -1317,12 +1325,11 @@ function saveCredentials() {
   // Synk de to SS-felter (inline i settings + fanen)
   const u=document.getElementById('ss_user'); const ui=document.getElementById('ss_user_inline');
   const p=document.getElementById('ss_pass'); const pi=document.getElementById('ss_pass_inline');
-  const ak=document.getElementById('anthropic_key');
   if(document.activeElement===ui&&u) u.value=ui.value;
   if(document.activeElement===u&&ui) ui.value=u.value;
   if(document.activeElement===pi&&p) p.value=pi.value;
   if(document.activeElement===p&&pi) pi.value=p.value;
-  if(ak&&ak.value) document.getElementById('anthropic_status').innerHTML='<span class="tag tag-green">Nøgle gemt</span>';
+  // v1.059: Anthropic-nøglen håndteres ikke længere i klienten
 }
 
 function toggleShow(id, btn) {
@@ -2832,7 +2839,7 @@ function recalc() {
 async function readEmail() {
   const email=document.getElementById('emailInput').value.trim();
   if(!email){alert('Indsæt venligst en email først.');return;}
-  if(!getApiKey()){alert('Husk at indsætte din Anthropic API-nøgle under API-adgange.');return;}
+  // v1.059: ANTHROPIC_KEY-validering sker server-side (Netlify env var)
   document.getElementById('aiLoading').style.display='flex';
 
   // Smart søgning — find relevante varer baseret på produktord i emailen
@@ -2876,90 +2883,21 @@ async function readEmail() {
   }).join('\n') : 'Tom liste';
 
   try {
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':getApiKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-5',max_tokens:1200,
-        messages:[{role:'user',content:`Du er assistent for et t-shirt trykkeri. Læs denne kundeordre og udtræk information.
-
-PRINTPOSITIONER:
-- "front", "forside", "bryst", "front tryk", "brysttryk" → "front", trykkstørrelse "large" (standard)
-- "back", "bagside", "ryg", "ryggen", "rygtryk" → "back", trykkstørrelse "large" (standard)
-- "ærme", "ærmer", "sleeve", "arm" uden yderligere → BEGGE ærmer (sleeve_l OG sleeve_r), altid "small"
-- "venstre ærme" / "left sleeve" → kun sleeve_l
-- "højre ærme" / "right sleeve" → kun sleeve_r
-- "stor" + position → "large" (f.eks. "stor ryg" = back large)
-- "lille" + position eller mål under 10×10 cm → "small"
-- "ekstra stor" eller mål over 26×35 cm → "xl"
-- Ingen print nævnt → tom liste []
-
-TØJSØGNING:
-- Match bredt på produktnavn, brand, SKU eller dele heraf
-- "creator" matcher Stanley Stella Creator, "E190" matcher B&C E190 osv.
-
-FARVEOVERSSÆTTELSE dansk → engelsk (brug altid det engelske navn fra tøjlisten):
-- rød / red → Red
-- sort / black / svart → Black
-- hvid / white / hvit → White
-- blå / blue → Blue eller Navy alt efter kontekst
-- navy / mørkeblå → Navy
-- grå / grijs / grey / gray → Grey eller Dark Grey
-- grøn / green / grön → Green eller Bottle Green
-- gul / yellow → Yellow
-- orange → Orange
-- lyserød / pink → Pink
-- lilla / purple / violet → Purple
-- brun / brown → Brown
-- bordeaux / vinrød → Burgundy eller Red
-- beige / sand → Beige eller Sand
-- turkis / turquoise → Turquoise eller Atoll
-
-STØRRELSES-ANTAL og STØRRELSESNAVNE:
-Brug ALTID de officielle størrelseskoder i størrelsesantal:
-- "small" / "lille" / "s" → "S"
-- "medium" / "m" → "M"
-- "large" / "l" / "stor" → "L"
-- "xl" / "ekstra large" → "XL"
-- "xxl" / "2xl" / "dobbelt xl" → "XXL"
-- "3xl" / "xxxl" → "3XL"
-- "4xl" → "4XL" osv.
-
-Eksempler:
-- "5 small og 5 xl" → størrelsesantal: {"S":5,"XL":5}
-- "5 small og 5 medium" → størrelsesantal: {"S":5,"M":5}
-- "10 stk i large" → størrelsesantal: {"L":10}
-- Kun totalt antal → sæt totalantal, lad størrelsesantal være {}
-
-FARVE: Skriv farvenavnet på engelsk præcist som det står i tøjlisten (f.eks. "Red", "Black", "Navy").
-
-Tøjliste:
-${gl}
-
-Ordretekst:
-${email}
-
-Svar KUN med JSON (ingen markdown):
-{
-  "kundenavn":"...",
-  "tøj":[{
-    "sku":"...",
-    "navn":"...",
-    "fundet_i_liste":true,
-    "farve":"Black",
-    "størrelsesantal":{"S":5,"M":5},
-    "totalantal":10
-  }],
-  "mangler":[{"navn":"...","beskrivelse":"..."}],
-  "printpositioner":["front"],
-  "printtype":{"front":"large","back":"large","sleeve_l":"small","sleeve_r":"small"}
-}`}]
-      })
+    // ── v1.059: Kald serverløs function ────────────────────────────────
+    // Selve prompten + Anthropic API-nøglen ligger nu i
+    // netlify/functions/parse-email.js. Klienten sender bare email + gl.
+    const res = await fetch('/api/parse-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, garmentList: gl })
     });
-    const data=await res.json();
-    if(data.error){alert('API fejl: '+data.error.message);document.getElementById('aiLoading').style.display='none';return;}
-    const text=data.content.map(c=>c.text||'').join('');
-    const json=JSON.parse(text.replace(/```json|```/g,'').trim());
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      alert('AI-fejl: ' + (json.error || `HTTP ${res.status}`));
+      document.getElementById('aiLoading').style.display='none';
+      return;
+    }
+    // ── slut serverløst kald ──────────────────────────────────────────
 
     if(json.kundenavn) document.getElementById('customerName').value=json.kundenavn;
 

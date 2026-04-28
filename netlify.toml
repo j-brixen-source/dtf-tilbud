@@ -4,3 +4,11 @@
 
 [functions]
   node_bundler = "esbuild"
+
+# Pretty URLs for serverless functions: /api/foo → /.netlify/functions/foo
+# (v1.059: indført for /api/parse-email; bagudkompatibelt med direkte path)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
