@@ -4,17 +4,24 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.054
+  Version: 1.056
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.054  (2026-04-27)  ⭐ Aktuel
-          • Fix: SS produktbilleder vises igen (window.ssColorCodes
-            genopbygges fra Supabase color_code_map)
-          • Fix: L-shop lager-badges vises nu pr. (farve, størrelse) —
-            samme som SS — UI-checken er ikke længere kun for SS
-          • Cache-buster på lshop-supabase.js?v=7
+  v1.056  (2026-04-27)  ⭐ Aktuel
+          • L-shop billeder hentes nu fra dedikeret Netlify-site
+            (tetos-images.netlify.app, ~40k web-optimized billeder)
+          • Holder hovedrepoet (TETOS app) lille og hurtigt at deploye
+          • Fallback-kæde uændret: variant-billede → SKU → "ikke fundet"
+
+  v1.055  (2026-04-27)
+          • L-shop produktbilleder fra lokal /public/lshop-images/
+          • Smart fallback: variant-billede → SKU hovedbillede → "ikke fundet"
+
+  v1.054  (2026-04-27)
+          • Fix: SS produktbilleder vises igen (window.ssColorCodes)
+          • Fix: L-shop lager-badges vises pr. (farve, størrelse)
 
   v1.053  (2026-04-27)
           • Stanley Stella → server-side auto-sync (1× dagligt kl. 06:00)
@@ -62,7 +69,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.054 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.056 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -746,7 +753,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.054 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
+  <div class="header-tag">v1.056 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
 </div>
 
 <div class="layout">
@@ -2124,8 +2131,12 @@ let activeColorPickerLineIdx = null;
 const SS_IMG_BASE = 'https://res.cloudinary.com/www-stanleystella-com/t_pim/TechnicalNames';
 
 // L-shop mulige image base URLs — prøver i rækkefølge indtil én virker
+// L-shop billede-baser — checked i rækkefølge (første URL der virker, vinder)
+// Billeder hostes på separat Netlify-site (tetos-images.netlify.app, ~40k filer)
+// uploadet via L-shop picture-service ZIP (web images_208x268)
 const LSHOP_IMG_BASES = [
-  'https://shop.l-shop-team.dk/out/pictures/generated/product/1/540_340_75/',
+  'https://tetos-images.netlify.app/',                                           // ⭐ Primær: dedikeret Netlify-site
+  'https://shop.l-shop-team.dk/out/pictures/generated/product/1/540_340_75/',    // Fallback (kræver login)
   'https://shop.l-shop-team.dk/out/pictures/master/product/1/',
   'https://shop.l-shop-team.de/out/pictures/generated/product/1/540_340_75/',
   'https://shop.l-shop-team.de/out/pictures/master/product/1/',
@@ -2144,6 +2155,7 @@ function buildLineImageHTML(i, gl) {
   if(!gl || !gl.sku || !gl.selectedColor) return '';
 
   let frontUrl = '', backUrl = '', meta = '';
+  let lshopFallbackUrl = '';  // Bruges kun for L-shop som fallback til hovedbillede
 
   if(gl.fromSS) {
     const colorCodes = window.ssColorCodes || {};
@@ -2157,6 +2169,9 @@ function buildLineImageHTML(i, gl) {
     const pictureName = pictureMap[gl.selectedColor];
     if(!pictureName) return `<div class="gline-img-empty">Intet billede for ${gl.selectedColor}</div>`;
     frontUrl = LSHOP_IMG_BASES[0] + pictureName;
+    // Fallback til hovedbillede uden farve-suffix hvis variant-billede mangler
+    // f.eks. AQ001_Charcoal-(Solid)_Jet-Black.jpg → AQ001.jpg
+    lshopFallbackUrl = LSHOP_IMG_BASES[0] + gl.sku + '.jpg';
     backUrl = '';
     meta = gl.selectedColor;
   }
@@ -2176,7 +2191,9 @@ function buildLineImageHTML(i, gl) {
     </div>` : `
     <div class="gline-img-wrap" style="max-width:100%">
       <img src="${frontUrl}" alt="Billede" loading="lazy"
-        onerror="this.style.display='none';this.parentElement.innerHTML='<span style=\\'font-size:10px;color:var(--muted)\\'>Billede ikke fundet</span>'">
+        ${!gl.fromSS && lshopFallbackUrl ? `data-fallback="${lshopFallbackUrl}"
+        onerror="if(this.dataset.tried!=='fallback'){this.dataset.tried='fallback';this.src=this.dataset.fallback;}else{this.style.display='none';this.parentElement.innerHTML='<span style=\\'font-size:10px;color:var(--muted)\\'>Billede ikke fundet</span>';}"`
+        : `onerror="this.style.display='none';this.parentElement.innerHTML='<span style=\\'font-size:10px;color:var(--muted)\\'>Billede ikke fundet</span>'"`}>
     </div>`;
   return `<div class="gline-img-card">${imgs}<div class="gline-img-meta">${meta}</div></div>`;
 }
