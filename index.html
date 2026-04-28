@@ -4,23 +4,26 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.057
+  Version: 1.058
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.057  (2026-04-28)  ⭐ Aktuel — Lag 1: Login + medarbejder-system
+  v1.058  (2026-04-28)  ⭐ Aktuel — Ryddet UI på Indstillinger og API-adgange
+          • Indstillinger: 3 sektioner — Katalog-status, Priser, Avanceret
+          • API-adgange: Medarbejdere først, Eksterne tjenester samlet,
+            Database skjult under "Avanceret"
+          • Årlig L-shop CSV-upload nu kollapset (ikke synlig som default)
+          • Træk-CSV-feltet er fjernet fra hovedviewet — bruges kun 1×/år
+          • Anvendt <details>/<summary> til at skjule sjældne admin-opgaver
+
+  v1.057  (2026-04-28) — Lag 1: Login + medarbejder-system
           • Hardcoded Supabase URL + publishable key i index.html
           • Login-skærm vises før app loades (Supabase Auth)
-          • Delt login (info@tekstil-tryk.dk) + medarbejder-vælger efter login
-          • Medarbejdere kan tilføjes/fjernes fra Indstillinger-side
+          • Delt login + medarbejder-vælger (3 brugere oprettet)
           • "Oprettet af" gemmes på tilbud — vises i tilbudsliste
-          • User-badge i header (klik for at skifte medarbejder)
-          • Ingen config-fil nødvendig — bare URL + login fra hvilken som
-            helst browser/PC
           • Ny tabel: medarbejdere (RLS authenticated only)
           • RLS strammet på kunder/tilbud/dtf_configs/indstillinger
-            (kører supabase-fase2-rls.sql)
 
   v1.056  (2026-04-27)
           • L-shop billeder fra dedikeret tetos-images.netlify.app
@@ -80,7 +83,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.057 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.058 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -822,7 +825,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.057 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.058 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -853,97 +856,135 @@
     <!-- ── SETTINGS ── -->
     <div id="panel-settings" class="panel active">
 
-      <!-- Config fil drop -->
-      <div class="card" id="configDropCard"
-        ondragover="handleConfigDragOver(event)"
-        ondragleave="handleConfigDragLeave(event)"
-        ondrop="handleConfigDrop(event)"
-        style="border:2px dashed var(--border2);text-align:center;padding:1.5rem;cursor:pointer;transition:all 0.15s"
-        onclick="document.getElementById('configFileInput').click()">
-        <div style="font-size:20px;opacity:0.4;margin-bottom:6px">⚙</div>
-        <div style="font-size:13px;font-weight:500">Træk dtf-config.txt hertil</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">Indlæser alle nøgler og indstillinger på én gang</div>
-        <input type="file" id="configFileInput" accept=".txt" style="display:none" onchange="loadConfigFile(event)">
-      </div>
-      <div id="configStatus" class="file-status" style="margin-bottom:1rem"></div>
-
+      <!-- ───── SEKTION 1: KATALOG-STATUS (toplinjer) ───── -->
       <div class="card">
-        <div class="card-title">Tøjliste</div>
+        <div class="card-title">Katalog-status</div>
+        <div class="info-box" style="margin-bottom:14px">
+          Tøj-katalogerne synkroniseres automatisk fra leverandørerne. Du behøver normalt ikke gøre noget her.
+        </div>
 
-        <!-- Stanley Stella (auto-syncet via GitHub Actions kl. 06:00 dagligt) -->
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:500">Stanley Stella <span style="font-size:11px;color:var(--muted);font-weight:400">· auto-synced kl. 06:00 dagligt</span></div>
-            <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()" title="Hent eksisterende katalog fra Supabase">
+        <!-- Stanley Stella status -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:13px;font-weight:500">Stanley Stella</div>
+              <div style="font-size:11px;color:var(--muted)">Auto-sync 1× dagligt kl. 06:00</div>
+            </div>
+            <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()" title="Genindlæs fra Supabase">
               🔄 Genindlæs
             </button>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <span style="font-size:12px;color:var(--muted)">EUR/DKK kurs:</span>
-            <input type="number" id="eur_dkk" value="7.50" step="0.01" min="1" style="width:80px"
+          <div id="ssStatus" class="file-status" style="margin-top:8px"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)">
+            <span>EUR/DKK kurs:</span>
+            <input type="number" id="eur_dkk" value="7.50" step="0.01" min="1" style="width:70px"
               onchange="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()">
-            <span style="font-size:12px;color:var(--muted)">Priser fra SS er i EUR og omregnes automatisk</span>
+            <span>(SS-priser omregnes automatisk)</span>
           </div>
-          <div class="loading" id="ssLoading" style="display:none"><div class="spinner"></div>Henter fra Stanley Stella...</div>
-          <div id="ssStatus" class="file-status"></div>
         </div>
 
-        <!-- CSV upload med drag and drop -->
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:500">Tøjliste fra leverandør</div>
-        <div class="upload-area" id="dropZone"
-          onclick="document.getElementById('fileInput').click()"
-          ondragover="handleDragOver(event)"
-          ondragleave="handleDragLeave(event)"
-          ondrop="handleDrop(event)">
-          <div class="upload-icon" id="dropIcon">↑</div>
-          <span id="dropText">Træk CSV eller ZIP-fil hertil — eller klik for at vælge</span><br>
-          <span style="font-size:11px;margin-top:4px;display:block;opacity:0.7">Understøtter L-shop artikelfil + prisfil (begge som ZIP) — fletter automatisk</span>
-        </div>
-        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.zip" multiple style="display:none" onchange="handleFile(event)">
-        <input type="file" id="fileInputSave" accept=".csv,.zip" multiple style="display:none" onchange="handleFileWithSave(event)">
-        <div class="file-status" id="garmentStatus"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-sm" onclick="document.getElementById('fileInputSave').click()" title="Upload artikel + Major-fil og gem permanent i Supabase (årlig opdatering)">
-            💾 Upload årlig opdatering (gem i Supabase)
-          </button>
-          <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadLshopFromSupabase()" title="Hent eksisterende katalog fra Supabase">
-            🔄 Genindlæs fra Supabase
-          </button>
+        <!-- L-shop status -->
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:13px;font-weight:500">L-shop</div>
+              <div style="font-size:11px;color:var(--muted)">Lager auto-sync 4× dagligt · Katalog manuelt 1×/år</div>
+            </div>
+            <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadLshopFromSupabase()" title="Genindlæs fra Supabase">
+              🔄 Genindlæs
+            </button>
+          </div>
+          <div id="garmentStatus" class="file-status" style="margin-top:8px"></div>
         </div>
       </div>
 
+      <!-- ───── SEKTION 2: PRIS-INDSTILLINGER (det du tit justerer) ───── -->
       <div class="card">
-        <div class="card-title">Markup-tabel <span class="badge">indkøb → salgspris</span></div>
-        <div class="info-box">Salgspris = indkøbspris × faktor. Rabatten til kunden gives på salgsprisen.</div>
-        <div class="field-row"><div class="field-label">0–49 kr indkøb</div><input type="number" id="mu_low" value="2.5" step="0.1" min="1"><span style="font-size:12px;color:var(--muted)">× faktor</span></div>
-        <div class="field-row"><div class="field-label">50–100 kr indkøb</div><input type="number" id="mu_mid" value="2.1" step="0.1" min="1"><span style="font-size:12px;color:var(--muted)">× faktor</span></div>
-        <div class="field-row"><div class="field-label">100+ kr indkøb</div><input type="number" id="mu_high" value="1.9" step="0.1" min="1"><span style="font-size:12px;color:var(--muted)">× faktor</span></div>
-      </div>
+        <div class="card-title">Priser og rabatter</div>
 
-      <div class="card">
-        <div class="card-title">Printpriser pr. position og størrelse</div>
-        <div class="size-rules">
-          Lille: op til 10×10 cm &nbsp;·&nbsp; Stort: op til 26×35 cm &nbsp;·&nbsp; Ekstra stort: over 26×35 cm<br>
-          Ærmer er altid lille &nbsp;·&nbsp; Forside/bagside uden mål → stort (standard)
-        </div>
-        <table class="pricetbl">
-          <thead><tr><th>Position</th><th>Lille (kr)</th><th>Stort (kr)</th><th>Ekstra stort (kr)</th></tr></thead>
+        <!-- Markup -->
+        <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px;margin-top:4px">Markup (indkøb → salgspris)</div>
+        <table class="pricetbl" style="margin-bottom:18px">
+          <thead><tr><th>Indkøbspris</th><th>Faktor</th></tr></thead>
           <tbody>
-            <tr><td>Forside</td><td><input type="number" id="p_front_small" value="25" min="0"></td><td><input type="number" id="p_front_large" value="35" min="0"></td><td><input type="number" id="p_front_xl" value="50" min="0"></td></tr>
-            <tr><td>Bagside</td><td><input type="number" id="p_back_small" value="25" min="0"></td><td><input type="number" id="p_back_large" value="35" min="0"></td><td><input type="number" id="p_back_xl" value="50" min="0"></td></tr>
-            <tr><td>Venstre ærme</td><td><input type="number" id="p_sleeve_l_small" value="25" min="0"></td><td><td style="color:var(--muted);font-size:12px">—</td></tr>
-            <tr><td>Højre ærme</td><td><input type="number" id="p_sleeve_r_small" value="25" min="0"></td><td><td style="color:var(--muted);font-size:12px">—</td></tr>
+            <tr><td>0–49 kr</td><td><input type="number" id="mu_low"  value="2.5" step="0.1" min="1" style="width:80px"></td></tr>
+            <tr><td>50–100 kr</td><td><input type="number" id="mu_mid"  value="2.1" step="0.1" min="1" style="width:80px"></td></tr>
+            <tr><td>100+ kr</td><td><input type="number" id="mu_high" value="1.9" step="0.1" min="1" style="width:80px"></td></tr>
           </tbody>
         </table>
+
+        <!-- Print-priser -->
+        <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">
+          Trykpriser pr. position
+          <span style="font-weight:400;color:var(--muted)">· Lille ≤10×10 cm · Stort ≤26×35 cm · XL >26×35 cm</span>
+        </div>
+        <table class="pricetbl" style="margin-bottom:18px">
+          <thead><tr><th>Position</th><th>Lille</th><th>Stort</th><th>Ekstra stort</th></tr></thead>
+          <tbody>
+            <tr><td>Forside</td>
+              <td><input type="number" id="p_front_small"   value="25" min="0" style="width:65px"></td>
+              <td><input type="number" id="p_front_large"   value="35" min="0" style="width:65px"></td>
+              <td><input type="number" id="p_front_xl"      value="50" min="0" style="width:65px"></td></tr>
+            <tr><td>Bagside</td>
+              <td><input type="number" id="p_back_small"    value="25" min="0" style="width:65px"></td>
+              <td><input type="number" id="p_back_large"    value="35" min="0" style="width:65px"></td>
+              <td><input type="number" id="p_back_xl"       value="50" min="0" style="width:65px"></td></tr>
+            <tr><td>Venstre ærme</td>
+              <td><input type="number" id="p_sleeve_l_small" value="25" min="0" style="width:65px"></td>
+              <td colspan="2" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td></tr>
+            <tr><td>Højre ærme</td>
+              <td><input type="number" id="p_sleeve_r_small" value="25" min="0" style="width:65px"></td>
+              <td colspan="2" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td></tr>
+          </tbody>
+        </table>
+
+        <!-- Setup + rabat -->
+        <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">Setup og rabat</div>
+        <div class="field-row" style="margin-bottom:6px">
+          <div class="field-label">Setup pr. printposition</div>
+          <input type="number" id="setup_fee" value="100" min="0" step="5" style="width:80px">
+          <span style="font-size:12px;color:var(--muted)">kr (ingen rabat)</span>
+        </div>
+        <div class="field-row" style="margin-bottom:6px">
+          <div class="field-label">Rabat pr. stk.</div>
+          <input type="number" id="disc_per_unit" value="0.15" step="0.01" min="0" style="width:80px">
+          <span style="font-size:12px;color:var(--muted)">% — på tekstil + tryk</span>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Maks. rabat</div>
+          <input type="number" id="disc_max" value="40" min="0" max="100" style="width:80px">
+          <span style="font-size:12px;color:var(--muted)">%</span>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Opstartsgebyr og rabat</div>
-        <div class="field-row"><div class="field-label">Setup pr. printposition</div><input type="number" id="setup_fee" value="100" min="0" step="5"><span style="font-size:12px;color:var(--muted)">kr (ingen rabat)</span></div>
-        <div class="sep"></div>
-        <div class="field-row"><div class="field-label">Rabat pr. stk.</div><input type="number" id="disc_per_unit" value="0.15" step="0.01" min="0"><span style="font-size:12px;color:var(--muted)">% pr. stk. · gælder tekstil + tryk</span></div>
-        <div class="field-row"><div class="field-label">Maks. rabat</div><input type="number" id="disc_max" value="40" min="0" max="100"><span style="font-size:12px;color:var(--muted)">%</span></div>
-      </div>
+      <!-- ───── SEKTION 3: ÅRLIGE / SJÆLDNE OPGAVER (kollapset som default) ───── -->
+      <details class="card" style="cursor:pointer">
+        <summary style="font-size:14px;font-weight:500;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;opacity:0.6">▶</span>
+          Avanceret · Årlig L-shop katalog-upload
+        </summary>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div class="info-box" style="margin-bottom:12px">
+            Bruges 1× årligt når L-shop sender en ny prisliste. Træk artikel- + Major-fil ind (begge som ZIP).
+          </div>
+          <div class="upload-area" id="dropZone"
+            onclick="document.getElementById('fileInput').click()"
+            ondragover="handleDragOver(event)"
+            ondragleave="handleDragLeave(event)"
+            ondrop="handleDrop(event)"
+            style="padding:1.2rem">
+            <div class="upload-icon" id="dropIcon">↑</div>
+            <span id="dropText">Træk ZIP-fil hertil — eller klik for at vælge</span>
+          </div>
+          <input type="file" id="fileInput"     accept=".csv,.xlsx,.xls,.zip" multiple style="display:none" onchange="handleFile(event)">
+          <input type="file" id="fileInputSave" accept=".csv,.zip" multiple style="display:none" onchange="handleFileWithSave(event)">
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn btn-sm" onclick="document.getElementById('fileInputSave').click()" title="Upload artikel + Major-fil og gem permanent i Supabase">
+              💾 Gem i Supabase (årlig opdatering)
+            </button>
+          </div>
+        </div>
+      </details>
 
       <button class="btn btn-primary" onclick="showPanel('quote')">Gem indstillinger og gå til tilbud →</button>
     </div>
@@ -1058,56 +1099,79 @@
     <!-- ── API ADGANGE ── -->
     <div id="panel-api" class="panel">
 
+      <!-- ───── MEDARBEJDERE (vigtigst — det du oftest rør) ───── -->
       <div class="card">
-        <div class="card-title">Anthropic API-nøgle <span class="badge">Claude AI</span></div>
-        <div class="info-box">Bruges til at læse emails og generere tilbudstekster. Få din nøgle på <strong>console.anthropic.com</strong></div>
-        <div class="field-row">
-          <div class="field-label">API-nøgle</div>
-          <input type="password" id="anthropic_key" placeholder="sk-ant-api03-..." style="flex:1;max-width:420px;font-family:'DM Mono',monospace;font-size:12px" oninput="saveCredentials()">
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <button class="btn btn-sm" onclick="toggleShow('anthropic_key',this)">Vis nøgle</button>
-          <span id="anthropic_status" class="file-status" style="margin-top:0"></span>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Stanley Stella <span class="badge" style="background:#10b981;color:white">Auto-synced</span></div>
-        <div class="info-box">
-          Stanley Stella katalog synkroniseres nu <strong>automatisk via GitHub Actions kl. 06:00 dagligt</strong>.
-          Login-credentials gemmes sikkert som GitHub secrets.
-          <br><br>
-          Appen henter automatisk det aktuelle katalog fra Supabase ved sidestart — intet manuelt arbejde nødvendigt.
-        </div>
-        <!-- Skjulte felter bevaret for bagudkompatibilitet med config-fil parsing -->
-        <input type="hidden" id="ss_user">
-        <input type="hidden" id="ss_pass">
-      </div>
-
-      <div class="card">
-        <div class="card-title">Medarbejdere <span class="badge" style="background:#0066cc;color:white">v1.057</span></div>
-        <div class="info-box">Brugere der kan oprette tilbud i appen. Vælges ved login og gemmes på tilbud/ordrer.</div>
+        <div class="card-title">Medarbejdere</div>
+        <div class="info-box">Brugere der kan oprette tilbud. Vælges ved login og gemmes på tilbud/ordrer.</div>
         <div id="medarbejderAdminList" style="margin-bottom:10px"></div>
         <button class="btn btn-sm" onclick="tilfoejMedarbejder()">+ Tilføj medarbejder</button>
       </div>
 
+      <!-- ───── EKSTERNE TJENESTER (status — du behøver normalt ikke gøre noget) ───── -->
       <div class="card">
-        <div class="card-title">Supabase <span class="badge">Database</span></div>
-        <div class="info-box">Hent URL og anon key fra <strong>supabase.com → Settings → API</strong></div>
-        <div class="field-row">
-          <div class="field-label">Project URL</div>
-          <input type="text" id="sb_url_input" placeholder="https://xxxxx.supabase.co" style="flex:1;font-size:12px" onchange="localStorage.setItem('sb_url',this.value);initSupabase()">
+        <div class="card-title">Eksterne tjenester</div>
+
+        <!-- Anthropic Claude AI -->
+        <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div>
+              <div style="font-size:13px;font-weight:500">Anthropic Claude AI</div>
+              <div style="font-size:11px;color:var(--muted)">Bruges til AI-email-parsing</div>
+            </div>
+            <span class="tag" id="anthropicStatusTag" style="font-size:10px">Lokal nøgle</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="password" id="anthropic_key" placeholder="sk-ant-api03-..." style="flex:1;font-family:'DM Mono',monospace;font-size:11px" oninput="saveCredentials()">
+            <button class="btn btn-sm" onclick="toggleShow('anthropic_key',this)" style="font-size:11px">Vis</button>
+          </div>
+          <div id="anthropic_status" class="file-status" style="margin-top:6px"></div>
         </div>
-        <div class="field-row">
-          <div class="field-label">Anon Key</div>
-          <input type="password" id="sb_key_input" placeholder="eyJ..." style="flex:1;font-size:12px" onchange="localStorage.setItem('sb_key',this.value);initSupabase()">
+
+        <!-- Stanley Stella -->
+        <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:13px;font-weight:500">Stanley Stella</div>
+              <div style="font-size:11px;color:var(--muted)">Auto-sync 1× dagligt · credentials i GitHub secrets</div>
+            </div>
+            <span class="tag tag-green" style="font-size:10px">Auto-synced</span>
+          </div>
+          <input type="hidden" id="ss_user">
+          <input type="hidden" id="ss_pass">
+        </div>
+
+        <!-- L-shop -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:13px;font-weight:500">L-shop</div>
+              <div style="font-size:11px;color:var(--muted)">FTP lager-sync 4× dagligt · credentials i GitHub secrets</div>
+            </div>
+            <span class="tag tag-green" style="font-size:10px">Auto-synced</span>
+          </div>
         </div>
       </div>
 
-      <div class="card" style="border-color:var(--amber);background:var(--amber-bg)">
-        <div class="card-title" style="color:var(--amber)">Sikkerhed</div>
-        <p style="font-size:13px;color:var(--amber);line-height:1.6">Dine nøgler gemmes kun i din browsers hukommelse og forsvinder når du lukker siden. Brug dtf-config.txt til nemt at genindlæse dem.</p>
-      </div>
+      <!-- ───── DATABASE (skjult som default — kun til fejlfinding/miljø-skift) ───── -->
+      <details class="card" style="cursor:pointer">
+        <summary style="font-size:14px;font-weight:500;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;opacity:0.6">▶</span>
+          Avanceret · Database-konfiguration
+        </summary>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div class="info-box" style="margin-bottom:12px">
+            Supabase-credentials er hardcodede i appen. Disse felter overskriver kun lokalt i din browser — bruges fx til at pege til et test-miljø.
+          </div>
+          <div class="field-row" style="margin-bottom:6px">
+            <div class="field-label">Project URL</div>
+            <input type="text" id="sb_url_input" placeholder="https://xxxxx.supabase.co" style="flex:1;font-size:12px" onchange="localStorage.setItem('sb_url',this.value);initSupabase()">
+          </div>
+          <div class="field-row">
+            <div class="field-label">Anon Key</div>
+            <input type="password" id="sb_key_input" placeholder="eyJ..." style="flex:1;font-size:12px" onchange="localStorage.setItem('sb_key',this.value);initSupabase()">
+          </div>
+        </div>
+      </details>
 
     </div>
 
