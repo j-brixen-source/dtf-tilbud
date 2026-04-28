@@ -4,12 +4,23 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.059
+  Version: 1.060
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.059  (2026-04-28)  ⭐ Aktuel — Lag 2: Anthropic API-nøgle flyttet server-side
+  v1.060  (2026-04-28)  ⭐ Aktuel — Cleanup: fjern resterende anthropic_key-rester
+          • Hidden input <input id="anthropic_key"> fjernet fra Indstillinger
+          • Dead div #anthropic_status fjernet (skrevet til af tidligere
+            saveCredentials, som blev fjernet i v1.059)
+          • .env-config-loader: fjernet 2 linjer der mappede
+            config.ANTHROPIC_KEY → safeSet('anthropic_key', ...) +
+            fields-objektet. Loaderen håndterer stadig SS, Supabase, firma,
+            produktionstid (uændret). En .env-fil med ANTHROPIC_KEY vil nu
+            bare ignorere den nøgle — som er korrekt, da den hører server-side.
+          • Ingen funktionel ændring; kun død kode fjernet.
+
+  v1.059  (2026-04-28) — Lag 2: Anthropic API-nøgle flyttet server-side
           • Ny Netlify-function: netlify/functions/parse-email.js
           • Klienten kalder /api/parse-email i stedet for api.anthropic.com direkte
           • ANTHROPIC_KEY ligger nu kun i Netlify env vars — ikke i browseren
@@ -17,7 +28,7 @@
           • netlify.toml: /api/* redirecter til /.netlify/functions/* (force=true)
           • UI: API-key-felt i Indstillinger erstattet af "Server-side"-status,
             matchende Stanley Stella + L-shop. Hidden input bevaret for
-            bagudkompatibilitet med .env-config-loader.
+            bagudkompatibilitet med .env-config-loader (fjernet i v1.060).
           • getApiKey() fjernet (ingen klient-side nøgle længere)
           • Sikkerhed: 'anthropic-dangerous-direct-browser-access' header er nu
             unødvendig fordi nøglen aldrig forlader serveren
@@ -96,7 +107,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.059 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.060 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -838,7 +849,7 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.059 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.060 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -1133,9 +1144,6 @@
             </div>
             <span class="tag tag-green" id="anthropicStatusTag" style="font-size:10px">Server-side</span>
           </div>
-          <!-- Hidden input bevaret for bagudkompatibilitet med .env-config-loader (linje ~4354). Værdien bruges ikke længere af klienten. -->
-          <input type="hidden" id="anthropic_key">
-          <div id="anthropic_status" class="file-status" style="display:none"></div>
         </div>
 
         <!-- Stanley Stella -->
@@ -2162,7 +2170,7 @@ function renderGarmentLines() {
         <div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Pris pr. stk.</div>
           <div style="font-size:13px;font-weight:500;padding:6px 0">${(() => {
-            // NYT v1.060: vis prisspænd hvis variant-prisning er aktiv
+            // Vis prisspænd hvis variant-prisning er aktiv
             const g = (window.__getGarments ? window.__getGarments() : (window.garments||[])).find(x => x.sku === gl.sku);
             if (g && g.variantPrices && gl.selectedColor) {
               // Find min/max sale-pris for valgt farve
@@ -2711,7 +2719,7 @@ function recalc() {
     const lineQty=Object.values(gl.sizeQtys||{}).reduce((a,v)=>a+(+v||0),0);
     if(!lineQty) return;
 
-    // NYT v1.060: variant-pris pr. størrelse hvis tilgængelig (L-shop)
+    // Variant-pris pr. størrelse hvis tilgængelig (L-shop)
     let lineTotal = 0;
     let variantPriced = false;
     let avgSalePrice = gl.salePrice;
@@ -2766,7 +2774,7 @@ function recalc() {
       html+=`<div class="price-line"><span>${cl.name}${skuBadge} × ${cl.qty} stk (${cl.sizes})</span><span>${cl.total.toFixed(2)} kr</span></div>`;
 
       if (cl.variantPriced && cl.sizeBreakdown && cl.sizeBreakdown.length > 1) {
-        // NYT v1.060: vis pris pr. størrelse når variant-prisning er aktiv
+        // Vis pris pr. størrelse når variant-prisning er aktiv
         const distinctPrices = [...new Set(cl.sizeBreakdown.map(b => b.unitSale.toFixed(2)))];
         if (distinctPrices.length > 1) {
           cl.sizeBreakdown.forEach(b => {
@@ -4289,7 +4297,7 @@ function parseConfigFile(file) {
       });
 
       // Gem alle nøgler
-      if(config.ANTHROPIC_KEY) safeSet('anthropic_key', config.ANTHROPIC_KEY);
+      // (v1.060: ANTHROPIC_KEY håndteres ikke længere klient-side — server-side env var)
       if(config.SS_USER)       safeSet('ss_user', config.SS_USER);
       if(config.SS_PASSWORD)   safeSet('ss_pass', config.SS_PASSWORD);
       if(config.SUPABASE_URL)  safeSet('sb_url', config.SUPABASE_URL);
@@ -4315,7 +4323,6 @@ function parseConfigFile(file) {
 
       // Opdatér UI felter direkte
       const fields = {
-        'anthropic_key':  config.ANTHROPIC_KEY,
         'ss_user':        config.SS_USER,
         'ss_user_inline': config.SS_USER,
         'ss_pass':        config.SS_PASSWORD,
