@@ -4,12 +4,29 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.067
+  Version: 1.068
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.067  (2026-04-28)  ⭐ Aktuel — Nyt fast gebyr: Ordrehåndtering
+  v1.068  (2026-04-28)  ⭐ Aktuel — Settings flyttet til Supabase (globale)
+          • 16 settings (mu_*, p_*, setup, ordrehåndtering, rabat, eur_dkk)
+            gemmes nu i Supabase 'indstillinger'-tabellen — fælles for alle
+          • Ny "Gem ændringer"-knap øverst i Indstillinger:
+            - Default: grå "✓ Alle ændringer gemt"
+            - Når man ændrer felt: gul "● Ikke-gemte ændringer · Gem nu"
+            - Klik → batch-upsert til Supabase → tilbage til "Gemt"
+          • Realtime-subscription: hvis kollega ændrer settings, vises
+            toast: "Indstillinger opdateret af [navn]" + felter opdateres
+          • Engangs-migration: hvis tabellen er tom + localStorage har
+            værdier → migrer dem til Supabase + slet localStorage tetos_*
+          • Fallback: hvis Supabase fejler ved load eller save, brug
+            localStorage som backup (app bliver ikke ubrugelig)
+          • Nye funktioner: loadSettingsFromSupabase, saveSettingsToSupabase,
+            markSettingsDirty, subscribeToSettingsChanges, showToast,
+            migrateLocalStorageToSupabase
+
+  v1.067  (2026-04-28) — Nyt fast gebyr: Ordrehåndtering
           • Nyt felt 'order_handling_fee' i Indstillinger (default 75 kr)
           • Tilføjes én gang per tilbud (ikke per position som setup)
           • Vises som linje i pris-oversigt under "Opstart"
@@ -180,7 +197,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.067 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.068 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -624,6 +641,91 @@
   .bm-row-sub { font-size: 11px; color: var(--muted); flex-shrink: 0; }
   .bm-empty { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
 
+  /* v1.068: Settings save bar (top af Indstillinger-panel) */
+  .settings-savebar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface);
+    padding: 10px 14px;
+    margin: -1rem -1rem 1rem -1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .settings-savebar.dirty {
+    background: #fef3c7;
+    border-bottom-color: #fcd34d;
+  }
+  .settings-savebar .save-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+  }
+  .settings-savebar.dirty .save-status { color: #92400e; font-weight: 500; }
+  .settings-savebar .save-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--muted);
+  }
+  .settings-savebar.dirty .save-btn {
+    background: #f59e0b;
+    color: white;
+    border-color: #f59e0b;
+    font-weight: 500;
+  }
+  .settings-savebar .save-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+  }
+  .settings-savebar .save-btn:hover:not(:disabled) {
+    filter: brightness(0.95);
+  }
+
+  /* v1.068: Toast-notifikation */
+  .toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    background: rgba(20,20,20,0.92);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    max-width: 360px;
+    animation: toast-in 0.25s ease-out;
+    pointer-events: auto;
+  }
+  .toast.success { background: rgba(16,75,40,0.95); }
+  .toast.warning { background: rgba(146,64,14,0.95); }
+  .toast.error { background: rgba(127,29,29,0.95); }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes toast-out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-8px); }
+  }
+  .toast.fadeout { animation: toast-out 0.3s ease-in forwards; }
+
   /* Lagerstatus badge på størrelse */
   .size-qty { position: relative; }
   .size-stock {
@@ -959,7 +1061,7 @@
 <div class="header">
   <img src="/TETOS_LOGO.png" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.067 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.068 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -989,6 +1091,15 @@
 
     <!-- ── SETTINGS ── -->
     <div id="panel-settings" class="panel">
+
+      <!-- v1.068: Save-bar — viser om der er ikke-gemte ændringer -->
+      <div class="settings-savebar" id="settingsSavebar" style="display:none">
+        <div class="save-status" id="settingsSaveStatus">
+          <span id="settingsSaveIcon">✓</span>
+          <span id="settingsSaveText">Alle ændringer gemt</span>
+        </div>
+        <button class="save-btn" id="settingsSaveBtn" onclick="saveSettingsToSupabase()" disabled>Gem nu</button>
+      </div>
 
       <!-- ───── SEKTION 1: KATALOG-STATUS (toplinjer) ───── -->
       <div class="card">
@@ -1561,8 +1672,8 @@ function fmtKr(amount) {
   return fmtNum(amount) + ' kr';
 }
 
-// Liste af inputs der gemmes til localStorage med prefix 'tetos_'.
-// Læses ved app-init, gemmes ved hver onchange.
+// Liste af inputs der gemmes globalt (Supabase 'indstillinger'-tabel siden v1.068).
+// Læses ved login (efter onAuthSuccess); gemmes via "Gem"-knap i Indstillinger.
 const PERSISTED_SETTING_IDS = [
   'mu_low', 'mu_mid', 'mu_high',
   'p_front_small', 'p_front_large', 'p_front_xl',
@@ -1572,12 +1683,31 @@ const PERSISTED_SETTING_IDS = [
   'eur_dkk'
 ];
 
+// v1.068: dirty-state — brugeren har ændret felter men ikke gemt endnu
+window._settingsDirty = false;
+// Snapshot af gemte værdier (sat efter load eller efter save) — bruges til at
+// vurdere om brugeren faktisk har ændret noget vs. bare klikket i et felt
+window._settingsSnapshot = {};
+
+// Kaldt fra hvert input's onchange — markerer dirty hvis værdi rent faktisk er ændret
 function persistInput(el) {
   if (!el || !el.id) return;
+  // localStorage-fallback bevares så app virker offline / ved Supabase-fejl
   try { localStorage.setItem('tetos_' + el.id, el.value); }
   catch (e) { /* localStorage kan fejle i private browsing */ }
+
+  // Tjek om feltet adskiller sig fra det gemte snapshot
+  const snap = window._settingsSnapshot[el.id];
+  const cur = String(el.value);
+  if (snap === undefined || cur !== String(snap)) {
+    markSettingsDirty(true);
+  } else {
+    // Værdi er sat tilbage til den gemte → tjek om noget andet stadig er dirty
+    recheckDirtyState();
+  }
 }
 
+// Læs eksisterende localStorage-værdier ind (fallback hvis Supabase ikke er klar endnu)
 function loadPersistedSettings() {
   PERSISTED_SETTING_IDS.forEach(id => {
     let v;
@@ -1587,6 +1717,239 @@ function loadPersistedSettings() {
     const el = document.getElementById(id);
     if (el) el.value = v;
   });
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.068: Settings-persistens i Supabase ('indstillinger'-tabellen)
+// ──────────────────────────────────────────────────────────────────────
+
+// Læs alle 16 settings fra Supabase efter login. Hvis tabellen er tom +
+// localStorage har værdier → engangs-migration. Returnerer Promise<bool>:
+// true hvis indlæsning lykkedes (fra Supabase eller migration), false ellers.
+async function loadSettingsFromSupabase() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    dbLog('loadSettingsFromSupabase: Supabase ikke klar, bruger localStorage');
+    loadPersistedSettings();
+    captureSettingsSnapshot();
+    return false;
+  }
+  try {
+    const { data, error } = await sb
+      .from('indstillinger')
+      .select('id, vaerdi')
+      .in('id', PERSISTED_SETTING_IDS);
+    if (error) throw error;
+
+    const map = {};
+    (data || []).forEach(row => { map[row.id] = row.vaerdi; });
+
+    // Hvis intet er i Supabase → tjek for engangs-migration fra localStorage
+    if (Object.keys(map).length === 0) {
+      const migrated = await migrateLocalStorageToSupabase();
+      if (migrated) {
+        // Re-load efter migration
+        return await loadSettingsFromSupabase();
+      }
+      // Ingen data nogen steder — brug HTML-defaults
+      captureSettingsSnapshot();
+      if (typeof recalc === 'function') recalc();
+      return true;
+    }
+
+    // Sæt værdier på inputs
+    PERSISTED_SETTING_IDS.forEach(id => {
+      const v = map[id];
+      if (v === undefined || v === null || v === '') return;
+      const el = document.getElementById(id);
+      if (el) el.value = v;
+    });
+
+    captureSettingsSnapshot();
+    markSettingsDirty(false);
+    if (typeof recalc === 'function') recalc();
+    dbLog('Settings indlæst fra Supabase', Object.keys(map).length + ' felter');
+    return true;
+  } catch (err) {
+    dbLog('loadSettingsFromSupabase fejlede', err.message);
+    // Fallback: brug localStorage
+    loadPersistedSettings();
+    captureSettingsSnapshot();
+    if (typeof recalc === 'function') recalc();
+    return false;
+  }
+}
+
+// Engangs-migration: hvis Supabase er tom, men der ligger tetos_* keys i
+// localStorage → upload dem til Supabase og slet derefter localStorage-kopier.
+async function migrateLocalStorageToSupabase() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) return false;
+  // Saml værdier fra localStorage
+  const rows = [];
+  PERSISTED_SETTING_IDS.forEach(id => {
+    let v;
+    try { v = localStorage.getItem('tetos_' + id); }
+    catch (e) { v = null; }
+    if (v !== null && v !== '') {
+      rows.push({ id, vaerdi: String(v) });
+    }
+  });
+  if (rows.length === 0) {
+    dbLog('migrateLocalStorageToSupabase: intet at migrere');
+    return false;
+  }
+  try {
+    const { error } = await sb.from('indstillinger').upsert(rows);
+    if (error) throw error;
+    dbLog('Migration: localStorage → Supabase', rows.length + ' felter');
+    // Slet localStorage tetos_* keys efter succesfuld migration
+    PERSISTED_SETTING_IDS.forEach(id => {
+      try { localStorage.removeItem('tetos_' + id); } catch (e) {}
+    });
+    showToast('Indstillinger flyttet til server — gælder nu alle medarbejdere', 'success', 5000);
+    return true;
+  } catch (err) {
+    dbLog('Migration fejlede', err.message);
+    return false;
+  }
+}
+
+// Gem alle 16 settings til Supabase (kaldt fra "Gem nu"-knappen).
+async function saveSettingsToSupabase() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    showToast('Supabase ikke tilgængelig — prøv igen om lidt', 'error');
+    return;
+  }
+  const btn = document.getElementById('settingsSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Gemmer...'; }
+
+  try {
+    const rows = PERSISTED_SETTING_IDS.map(id => {
+      const el = document.getElementById(id);
+      const v = el ? String(el.value) : '';
+      return { id, vaerdi: v };
+    }).filter(r => r.vaerdi !== '');
+
+    const { error } = await sb.from('indstillinger').upsert(rows);
+    if (error) throw error;
+
+    captureSettingsSnapshot();
+    markSettingsDirty(false);
+    showToast('✓ Indstillinger gemt — gælder for alle medarbejdere', 'success');
+    dbLog('Settings gemt til Supabase', rows.length + ' felter');
+
+    // Opdatér localStorage som offline-backup
+    rows.forEach(r => {
+      try { localStorage.setItem('tetos_' + r.id, r.vaerdi); } catch (e) {}
+    });
+  } catch (err) {
+    dbLog('saveSettingsToSupabase fejlede', err.message);
+    showToast('Kunne ikke gemme: ' + err.message, 'error', 6000);
+    if (btn) { btn.disabled = false; btn.textContent = 'Gem nu'; }
+  }
+}
+
+// Husk de aktuelle værdier som "gemt baseline" — bruges til dirty-tracking
+function captureSettingsSnapshot() {
+  window._settingsSnapshot = {};
+  PERSISTED_SETTING_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) window._settingsSnapshot[id] = String(el.value);
+  });
+}
+
+// Markér UI som "dirty" eller "gemt"
+function markSettingsDirty(isDirty) {
+  window._settingsDirty = !!isDirty;
+  const bar = document.getElementById('settingsSavebar');
+  const btn = document.getElementById('settingsSaveBtn');
+  const icon = document.getElementById('settingsSaveIcon');
+  const txt = document.getElementById('settingsSaveText');
+  if (!bar || !btn) return;
+
+  // Vis save-bar (skjult før første load)
+  bar.style.display = '';
+
+  if (isDirty) {
+    bar.classList.add('dirty');
+    btn.disabled = false;
+    btn.textContent = 'Gem nu';
+    if (icon) icon.textContent = '●';
+    if (txt) txt.textContent = 'Ikke-gemte ændringer';
+  } else {
+    bar.classList.remove('dirty');
+    btn.disabled = true;
+    btn.textContent = 'Gemt';
+    if (icon) icon.textContent = '✓';
+    if (txt) txt.textContent = 'Alle ændringer gemt';
+  }
+}
+
+// Tjek om noget felt afviger fra snapshot (kaldt når en værdi sættes tilbage)
+function recheckDirtyState() {
+  let anyDirty = false;
+  PERSISTED_SETTING_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const snap = window._settingsSnapshot[id];
+    if (snap === undefined) return;
+    if (String(el.value) !== String(snap)) anyDirty = true;
+  });
+  markSettingsDirty(anyDirty);
+}
+
+// Realtime: subscribe til ændringer af 'indstillinger'-tabellen.
+// Når en kollega ændrer noget → opdatér felt + vis toast.
+let _settingsRealtimeChannel = null;
+function subscribeToSettingsChanges() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb || _settingsRealtimeChannel) return;
+
+  try {
+    _settingsRealtimeChannel = sb
+      .channel('indstillinger-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'indstillinger' },
+        (payload) => {
+          const row = payload.new || payload.old;
+          if (!row || !PERSISTED_SETTING_IDS.includes(row.id)) return;
+
+          // Hvis brugeren selv har dirty-ændringer, må vi ikke overskrive
+          // dem. Vis toast men opdatér ikke UI.
+          if (window._settingsDirty) {
+            showToast('Indstillinger ændret af en anden — gem først for ikke at miste dine ændringer', 'warning', 7000);
+            return;
+          }
+
+          const el = document.getElementById(row.id);
+          if (el && payload.new) {
+            el.value = payload.new.vaerdi;
+            window._settingsSnapshot[row.id] = String(payload.new.vaerdi);
+          }
+          if (typeof recalc === 'function') recalc();
+          showToast('Indstillinger opdateret af en kollega', 'success', 3500);
+        })
+      .subscribe();
+    dbLog('Realtime: lytter på indstillinger-ændringer');
+  } catch (err) {
+    dbLog('subscribeToSettingsChanges fejlede', err.message);
+  }
+}
+
+// Toast-notifikation. type = 'success' | 'warning' | 'error' | 'info'
+function showToast(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || 'info');
+  t.textContent = message;
+  container.appendChild(t);
+  setTimeout(() => {
+    t.classList.add('fadeout');
+    setTimeout(() => t.remove(), 300);
+  }, duration);
 }
 
 // ── Markup ──
@@ -4610,6 +4973,10 @@ function onAuthSuccess() {
   }
   // Hent medarbejder-listen og vis vælger hvis ingen valgt
   loadMedarbejdere();
+  // v1.068: Hent globale settings fra Supabase + start realtime-subscription
+  loadSettingsFromSupabase().then(() => {
+    subscribeToSettingsChanges();
+  });
   // v1.061: Startsiden er nu Nyt tilbud — sørg for at panel-init køres
   // (renderGarmentLines + recalc) nu hvor panelet allerede har klassen "active"
   showPanel('quote');
@@ -5359,15 +5726,26 @@ function åbnTilbud(id) {
 // Opdatér showPanel med data-loading
 
 // Init
-loadPersistedSettings();   // v1.065: før recalc så markup/setup/rabat er korrekte fra start
+loadPersistedSettings();   // v1.065: localStorage-fallback før recalc
 renderGarmentLines();
 recalc();
 // initSupabase() kaldes inde fra checkAuthAndStart() — vi viser login-skærm først
+// v1.068: efter login → loadSettingsFromSupabase() i onAuthSuccess overskriver
+// localStorage-værdier med globale Supabase-værdier
 checkAuthAndStart();
 setKundeType('b2b');
 updateProdTimeDates();
 // Opdatér datoer hvert minut (crossing cutoff time)
 setInterval(updateProdTimeDates, 60000);
+
+// v1.068: advarsel hvis brugeren forsøger at lukke siden med ikke-gemte settings
+window.addEventListener('beforeunload', (e) => {
+  if (window._settingsDirty) {
+    e.preventDefault();
+    e.returnValue = '';  // standard for at trigger browser dialog
+    return '';
+  }
+});
 
 // ──────────── L-shop Supabase auto-load + årlig upload ────────────
 async function handleFileWithSave(e) {
@@ -5421,5 +5799,9 @@ setTimeout(() => {
   }
 }, 800);
 </script>
+
+<!-- v1.068: Toast-container til notifikationer fra Supabase realtime -->
+<div class="toast-container" id="toastContainer"></div>
+
 </body>
 </html>
