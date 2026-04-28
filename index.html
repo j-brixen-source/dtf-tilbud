@@ -4,16 +4,27 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.056
+  Version: 1.057
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.056  (2026-04-27)  ⭐ Aktuel
-          • L-shop billeder hentes nu fra dedikeret Netlify-site
-            (tetos-images.netlify.app, ~40k web-optimized billeder)
-          • Holder hovedrepoet (TETOS app) lille og hurtigt at deploye
-          • Fallback-kæde uændret: variant-billede → SKU → "ikke fundet"
+  v1.057  (2026-04-28)  ⭐ Aktuel — Lag 1: Login + medarbejder-system
+          • Hardcoded Supabase URL + publishable key i index.html
+          • Login-skærm vises før app loades (Supabase Auth)
+          • Delt login (info@tekstil-tryk.dk) + medarbejder-vælger efter login
+          • Medarbejdere kan tilføjes/fjernes fra Indstillinger-side
+          • "Oprettet af" gemmes på tilbud — vises i tilbudsliste
+          • User-badge i header (klik for at skifte medarbejder)
+          • Ingen config-fil nødvendig — bare URL + login fra hvilken som
+            helst browser/PC
+          • Ny tabel: medarbejdere (RLS authenticated only)
+          • RLS strammet på kunder/tilbud/dtf_configs/indstillinger
+            (kører supabase-fase2-rls.sql)
+
+  v1.056  (2026-04-27)
+          • L-shop billeder fra dedikeret tetos-images.netlify.app
+            (~40k web-optimized billeder, 208x268 px)
 
   v1.055  (2026-04-27)
           • L-shop produktbilleder fra lokal /public/lshop-images/
@@ -69,7 +80,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.056 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.057 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -701,6 +712,64 @@
 </head>
 <body>
 
+<!-- ════════════════════════════════════════════════════════════
+     LOGIN SCREEN (v1.057+) — vises hvis ingen aktiv Supabase-session
+     ════════════════════════════════════════════════════════════ -->
+<div id="loginOverlay" style="display:none;position:fixed;inset:0;background:#1a1a1a;z-index:9999;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:12px;padding:36px 40px;min-width:380px;max-width:440px;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin-bottom:6px">TETOS</div>
+      <div style="font-size:13px;color:#888">Tekstil-tryk.dk Ordre System</div>
+    </div>
+
+    <form id="loginForm" onsubmit="return doLogin(event)">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:12px;color:#666;margin-bottom:4px">Email</label>
+        <input type="email" id="loginEmail" required autocomplete="email" autofocus
+          style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:18px">
+        <label style="display:block;font-size:12px;color:#666;margin-bottom:4px">Kodeord</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password"
+          style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box">
+      </div>
+      <button type="submit" id="loginBtn"
+        style="width:100%;padding:11px;background:#000;color:white;border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit">
+        Log ind →
+      </button>
+      <div id="loginError" style="margin-top:12px;font-size:12px;color:#dc2626;text-align:center;min-height:16px"></div>
+    </form>
+
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">
+      Glemt kodeord? Kontakt administrator.
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     MEDARBEJDER-VÆLGER (v1.057+) — vises efter login, hvis ingen
+     medarbejder er valgt eller når brugeren klikker "Skift bruger"
+     ════════════════════════════════════════════════════════════ -->
+<div id="userPickerOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9998;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:12px;padding:32px 36px;min-width:380px;max-width:480px;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:18px;font-weight:600;margin-bottom:4px">Hvem er du?</div>
+      <div style="font-size:12px;color:#888">Vælg din profil for at fortsætte</div>
+    </div>
+
+    <div id="userPickerList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px"></div>
+
+    <div id="userPickerEmpty" style="display:none;font-size:12px;color:#888;text-align:center;padding:20px;background:#f7f7f7;border-radius:8px">
+      Ingen medarbejdere endnu. Gå til <strong>Indstillinger → Medarbejdere</strong> for at oprette.
+    </div>
+
+    <button id="userPickerSkipBtn" onclick="skipUserPicker()"
+      style="width:100%;padding:9px;background:transparent;border:1px solid #ddd;color:#666;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;display:none">
+      Spring over (kun denne gang)
+    </button>
+  </div>
+</div>
+
 <!-- Global farvevælger pop-up -->
 <div class="color-popup-overlay" id="colorPopup" onclick="if(event.target===this)closeColorPicker()">
   <div class="color-popup">
@@ -753,7 +822,11 @@
 <div class="header">
   <div class="header-logo" title="Tekstil-tryk.dk Ordre System">TETOS</div>
   <div class="header-sep"></div>
-  <div class="header-tag">v1.056 · Tekstil-tryk.dk · Powered by Claude AI</div></div>
+  <div class="header-tag">v1.057 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+    <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
+    <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
+  </div>
 </div>
 
 <div class="layout">
@@ -1009,6 +1082,13 @@
         <!-- Skjulte felter bevaret for bagudkompatibilitet med config-fil parsing -->
         <input type="hidden" id="ss_user">
         <input type="hidden" id="ss_pass">
+      </div>
+
+      <div class="card">
+        <div class="card-title">Medarbejdere <span class="badge" style="background:#0066cc;color:white">v1.057</span></div>
+        <div class="info-box">Brugere der kan oprette tilbud i appen. Vælges ved login og gemmes på tilbud/ordrer.</div>
+        <div id="medarbejderAdminList" style="margin-bottom:10px"></div>
+        <button class="btn btn-sm" onclick="tilfoejMedarbejder()">+ Tilføj medarbejder</button>
       </div>
 
       <div class="card">
@@ -3835,12 +3915,24 @@ function debugDump() {
 let supabaseClient = null;
 let _lshopAutoLoadDone = false;  // sikrer at auto-load kun kører én gang pr. session
 
+// ════════════════════════════════════════════════════════════════════
+// HARDCODED CREDENTIALS (v1.057+)
+// Supabase publishable key er designet til at være public — beskyttelse
+// sker via RLS-policies i databasen. Login-skærm sikrer at kun
+// authenticated brugere kan læse kunder/tilbud.
+// ════════════════════════════════════════════════════════════════════
+const TETOS_SUPABASE_URL = 'https://vumyufckkdeeszxvmyjb.supabase.co';
+const TETOS_SUPABASE_KEY = 'sb_publishable_iqw0lJmj5PJzehF-Rp1l5w_t8Vs27mv';
+
 function initSupabase() {
-  const url = localStorage.getItem('sb_url');
-  const key = localStorage.getItem('sb_key');
+  // Brug hardcoded credentials som default — config-fil kan stadig overskrive
+  const url = localStorage.getItem('sb_url') || TETOS_SUPABASE_URL;
+  const key = localStorage.getItem('sb_key') || TETOS_SUPABASE_KEY;
   if(url && key) {
     try {
-      supabaseClient = supabase.createClient(url, key);
+      supabaseClient = supabase.createClient(url, key, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+      });
       dbLog('Supabase klar', url);
       // Auto-load L-shop OG Stanley Stella så snart Supabase er klar
       if (!_lshopAutoLoadDone && window.lshopSupabase) {
@@ -3867,6 +3959,286 @@ function getSB() {
   if(supabaseClient) return supabaseClient;
   initSupabase();
   return supabaseClient;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// AUTH (v1.057+) — login/logout + session-håndtering
+// ════════════════════════════════════════════════════════════════════
+
+let _currentUser = null;
+
+async function checkAuthAndStart() {
+  // Sørg for Supabase-klient er klar (med hardcoded credentials)
+  if (!supabaseClient) initSupabase();
+  if (!supabaseClient) {
+    showLoginOverlay('Supabase ikke konfigureret');
+    return;
+  }
+
+  // Tjek for aktiv session
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session && session.user) {
+      _currentUser = session.user;
+      hideLoginOverlay();
+      onAuthSuccess();
+    } else {
+      showLoginOverlay();
+    }
+  } catch (e) {
+    dbLog('Auth check fejl', e.message);
+    showLoginOverlay('Kunne ikke tjekke session');
+  }
+
+  // Lyt til auth-ændringer (login/logout)
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    dbLog('Auth event', event);
+    if (event === 'SIGNED_IN' && session) {
+      _currentUser = session.user;
+      hideLoginOverlay();
+      onAuthSuccess();
+    } else if (event === 'SIGNED_OUT') {
+      _currentUser = null;
+      showLoginOverlay();
+    }
+  });
+}
+
+function showLoginOverlay(msg) {
+  const overlay = document.getElementById('loginOverlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  if (msg) {
+    const err = document.getElementById('loginError');
+    if (err) err.textContent = msg;
+  }
+  // Forhindr scroll på baggrund
+  document.body.style.overflow = 'hidden';
+}
+
+function hideLoginOverlay() {
+  const overlay = document.getElementById('loginOverlay');
+  if (overlay) overlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function doLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+
+  if (errEl) errEl.textContent = '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Logger ind...'; }
+
+  try {
+    const sb = getSB();
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    // SIGNED_IN event vil håndtere resten via onAuthStateChange
+  } catch (err) {
+    if (errEl) errEl.textContent = err.message || 'Login fejlede';
+    if (btn) { btn.disabled = false; btn.textContent = 'Log ind →'; }
+  }
+  return false;
+}
+
+async function doLogout() {
+  if (!confirm('Log ud af TETOS?')) return;
+  try {
+    await supabaseClient.auth.signOut();
+    // Reload for at rydde state komplet
+    location.reload();
+  } catch (e) {
+    alert('Logout fejl: ' + e.message);
+  }
+}
+
+function onAuthSuccess() {
+  // Trigger normal app-init når bruger er logget ind
+  dbLog('Bruger logget ind', _currentUser?.email || '?');
+  // Tjek om vi har en valgt medarbejder allerede (fra localStorage)
+  const savedMb = localStorage.getItem('tetos_medarbejder');
+  if (savedMb) {
+    try {
+      window._activeMedarbejder = JSON.parse(savedMb);
+      updateUserBadge();
+    } catch (e) {}
+  }
+  // Hent medarbejder-listen og vis vælger hvis ingen valgt
+  loadMedarbejdere();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MEDARBEJDERE — vælger + admin (v1.057+)
+// ════════════════════════════════════════════════════════════════════
+
+window._medarbejdere = [];
+window._activeMedarbejder = null;
+
+async function loadMedarbejdere() {
+  const sb = getSB();
+  if (!sb) return;
+  try {
+    const { data, error } = await sb
+      .from('medarbejdere')
+      .select('*')
+      .eq('aktiv', true)
+      .order('sort_order', { ascending: true })
+      .order('navn', { ascending: true });
+    if (error) throw error;
+    window._medarbejdere = data || [];
+    dbLog('Medarbejdere hentet', window._medarbejdere.length);
+    // Hvis der ikke er valgt nogen endnu, vis vælger
+    if (!window._activeMedarbejder && window._medarbejdere.length > 0) {
+      showUserPicker();
+    } else if (window._medarbejdere.length === 0) {
+      // Ingen medarbejdere oprettet endnu — vis vælger med tom-tekst + skip
+      showUserPicker(true);
+    }
+    // Render admin-listen hvis siden er åben
+    renderMedarbejderAdmin();
+  } catch (e) {
+    dbLog('Medarbejder load fejl', e.message);
+  }
+}
+
+function showUserPicker(allowSkip = false) {
+  const overlay = document.getElementById('userPickerOverlay');
+  const list = document.getElementById('userPickerList');
+  const empty = document.getElementById('userPickerEmpty');
+  const skipBtn = document.getElementById('userPickerSkipBtn');
+  if (!overlay) return;
+
+  if (window._medarbejdere.length === 0) {
+    list.style.display = 'none';
+    empty.style.display = 'block';
+    skipBtn.style.display = 'block';
+    skipBtn.onclick = () => { hideUserPicker(); };
+  } else {
+    list.style.display = 'flex';
+    empty.style.display = 'none';
+    skipBtn.style.display = allowSkip ? 'block' : 'none';
+    list.innerHTML = window._medarbejdere.map(m => {
+      const initials = m.initialer || (m.navn || '').split(' ').map(s => s[0]).join('').slice(0,2).toUpperCase();
+      const color = m.farve || '#666';
+      return `
+        <button onclick="selectMedarbejder(${m.id})"
+          style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#f7f7f7;border:1px solid #eee;border-radius:8px;cursor:pointer;font-family:inherit;text-align:left;transition:background 0.1s"
+          onmouseover="this.style.background='#eee'"
+          onmouseout="this.style.background='#f7f7f7'">
+          <div style="width:36px;height:36px;border-radius:50%;background:${color};color:white;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px">${initials}</div>
+          <div style="font-size:14px;font-weight:500">${m.navn}</div>
+        </button>`;
+    }).join('');
+  }
+
+  overlay.style.display = 'flex';
+}
+
+function hideUserPicker() {
+  const overlay = document.getElementById('userPickerOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function selectMedarbejder(id) {
+  const m = window._medarbejdere.find(x => x.id === id);
+  if (!m) return;
+  window._activeMedarbejder = m;
+  localStorage.setItem('tetos_medarbejder', JSON.stringify(m));
+  hideUserPicker();
+  updateUserBadge();
+  dbLog('Medarbejder valgt', m.navn);
+}
+
+function skipUserPicker() {
+  hideUserPicker();
+}
+
+function updateUserBadge() {
+  const badge = document.getElementById('userBadge');
+  if (!badge) return;
+  if (window._activeMedarbejder) {
+    const m = window._activeMedarbejder;
+    const initials = m.initialer || (m.navn || '').split(' ').map(s => s[0]).join('').slice(0,2).toUpperCase();
+    const color = m.farve || '#666';
+    badge.innerHTML = `
+      <span style="width:18px;height:18px;border-radius:50%;background:${color};color:white;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:600">${initials}</span>
+      <span>${m.navn}</span>
+    `;
+    badge.style.display = 'inline-flex';
+    badge.style.cursor = 'pointer';
+    badge.title = 'Klik for at skifte bruger';
+    badge.onclick = () => showUserPicker(true);
+  } else if (_currentUser?.email) {
+    badge.textContent = _currentUser.email;
+    badge.style.display = 'inline-flex';
+    badge.style.cursor = 'pointer';
+    badge.title = 'Vælg medarbejder';
+    badge.onclick = () => showUserPicker(true);
+  }
+}
+
+// ── ADMIN UI: tilføj/fjern medarbejdere ─────────────────────────────
+
+async function tilfoejMedarbejder() {
+  const navn = (prompt('Navn på medarbejder:') || '').trim();
+  if (!navn) return;
+  const initialerDefault = navn.split(' ').map(s => s[0]).join('').slice(0,3).toUpperCase();
+  const initialer = (prompt('Initialer (vises i badge):', initialerDefault) || initialerDefault).trim();
+
+  try {
+    const sb = getSB();
+    const { data, error } = await sb.from('medarbejdere').insert({
+      navn, initialer, sort_order: (window._medarbejdere?.length || 0) + 1
+    }).select();
+    if (error) throw error;
+    await loadMedarbejdere();
+    alert(`✓ "${navn}" tilføjet`);
+  } catch (e) {
+    alert('Fejl: ' + e.message);
+  }
+}
+
+async function fjernMedarbejder(id) {
+  const m = window._medarbejdere.find(x => x.id === id);
+  if (!m) return;
+  if (!confirm(`Fjern "${m.navn}"?`)) return;
+  try {
+    const sb = getSB();
+    // Vi sætter aktiv=false i stedet for at slette (bevarer historik på tilbud)
+    const { error } = await sb.from('medarbejdere').update({ aktiv: false }).eq('id', id);
+    if (error) throw error;
+    // Hvis det var den aktive bruger, ryd valg
+    if (window._activeMedarbejder?.id === id) {
+      window._activeMedarbejder = null;
+      localStorage.removeItem('tetos_medarbejder');
+      updateUserBadge();
+    }
+    await loadMedarbejdere();
+  } catch (e) {
+    alert('Fejl: ' + e.message);
+  }
+}
+
+function renderMedarbejderAdmin() {
+  const container = document.getElementById('medarbejderAdminList');
+  if (!container) return;
+  if (window._medarbejdere.length === 0) {
+    container.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:14px;text-align:center">Ingen medarbejdere endnu</div>';
+    return;
+  }
+  container.innerHTML = window._medarbejdere.map(m => {
+    const initials = m.initialer || '??';
+    const color = m.farve || '#666';
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
+        <div style="width:32px;height:32px;border-radius:50%;background:${color};color:white;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px">${initials}</div>
+        <div style="flex:1;font-size:13px">${m.navn}</div>
+        <button class="btn btn-sm" onclick="fjernMedarbejder(${m.id})" style="font-size:11px;color:var(--red,#dc2626)">Fjern</button>
+      </div>`;
+  }).join('');
 }
 
 // ── Config fil drag/drop ──
@@ -4303,7 +4675,8 @@ async function gemTilbud(status='kladde') {
     linjer,
     total_ekskl: calc.totalEx,
     total_inkl:  calc.totalInc,
-    noter: document.getElementById('customerName')?.value||''
+    noter: document.getElementById('customerName')?.value||'',
+    oprettet_af: window._activeMedarbejder?.navn || ''
   };
   try {
     const { data, error } = await sb.from('tilbud').insert(tilbud).select();
@@ -4367,12 +4740,13 @@ function renderTilbudTable(tilbud) {
   const wrap = document.getElementById('tilbudTableWrap');
   if(!tilbud.length) { wrap.innerHTML='<p style="font-size:13px;color:var(--muted)">Ingen tilbud fundet.</p>'; return; }
   wrap.innerHTML = `<table class="gtbl"><thead><tr>
-    <th>Nummer</th><th>Kunde</th><th>Dato</th><th>Status</th><th>Total inkl.</th><th></th>
+    <th>Nummer</th><th>Kunde</th><th>Dato</th><th>Oprettet af</th><th>Status</th><th>Total inkl.</th><th></th>
   </tr></thead><tbody>
   ${tilbud.map(t=>`<tr>
     <td style="font-family:'DM Mono',monospace;font-weight:500">${t.nummer}</td>
     <td>${t.kunder?.firma||t.kunder?.navn||t.noter||'—'}</td>
     <td style="font-size:12px;color:var(--muted)">${new Date(t.created_at).toLocaleDateString('da-DK')}</td>
+    <td style="font-size:12px;color:var(--muted)">${t.oprettet_af||'—'}</td>
     <td><span class="tag ${statusFarve[t.status]||''}" style="font-size:10px">${statusLabel[t.status]||t.status}</span></td>
     <td style="font-weight:500">${(t.total_inkl||0).toLocaleString('da-DK',{minimumFractionDigits:2})} kr</td>
     <td style="white-space:nowrap">
@@ -4443,7 +4817,8 @@ function åbnTilbud(id) {
 // Init
 renderGarmentLines();
 recalc();
-initSupabase();
+// initSupabase() kaldes inde fra checkAuthAndStart() — vi viser login-skærm først
+checkAuthAndStart();
 setKundeType('b2b');
 updateProdTimeDates();
 // Opdatér datoer hvert minut (crossing cutoff time)
