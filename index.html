@@ -4,12 +4,24 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.065
+  Version: 1.066
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.065  (2026-04-28)  ⭐ Aktuel — Settings-persistens + dansk talformat
+  v1.066  (2026-04-28)  ⭐ Aktuel — Brand/Model: live søgeresultat-popup
+          • Brand- og Model-søgefelter åbner nu en modal-popup med liste
+            over matches mens man taster (samme mønster som farve-popup'en)
+          • Auto-vælg ved præcis 1 match bevares (uændret)
+          • Ny popup: brandModelPopup (genbruger color-popup-overlay CSS)
+          • Funktioner: openBrandPopup/openModelPopup,
+            renderBrandModelList, pickBrandFromPopup, pickModelFromPopup,
+            closeBrandModelPopup
+          • searchBrandInline/searchModelInline opdateret til at åbne popup
+            når flere matches findes (i stedet for kun at filtrere
+            usynlig dropdown som før)
+
+  v1.065  (2026-04-28) — Settings-persistens + dansk talformat
           • Markup-faktorer, trykpriser, setup, rabat, EUR/DKK gemmes nu
             i localStorage (samme mønster som produktionstid har brugt)
           • 15 settings-inputs får onchange="persistInput(this)"
@@ -158,7 +170,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.065 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.066 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -585,6 +597,23 @@
   }
   .color-popup-close:hover { background: var(--bg); }
 
+  /* v1.066: Brand/Model popup-liste */
+  .bm-row {
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .bm-row:last-child { border-bottom: none; }
+  .bm-row:hover { background: var(--bg); }
+  .bm-row.selected { background: rgba(0,0,0,0.05); font-weight: 500; }
+  .bm-row-sub { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .bm-empty { padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
+
   /* Lagerstatus badge på størrelse */
   .size-qty { position: relative; }
   .size-stock {
@@ -868,6 +897,19 @@
   </div>
 </div>
 
+<!-- v1.066: Brand/Model søgeresultat-popup -->
+<div class="color-popup-overlay" id="brandModelPopup" onclick="if(event.target===this)closeBrandModelPopup()">
+  <div class="color-popup" style="max-width:520px">
+    <div class="color-popup-title" id="bmPopTitle">Vælg</div>
+    <div class="color-popup-sub" id="bmPopSub"></div>
+    <input type="text" id="bmPopSearchInput" placeholder="🔍 Søg..."
+      oninput="filterBrandModelPopup(this.value)"
+      style="width:100%;padding:8px 12px;margin-bottom:14px;border:1px solid var(--border2);border-radius:6px;font-size:13px;font-family:inherit">
+    <div id="bmPopList" style="max-height:50vh;overflow-y:auto;border:1px solid var(--border2);border-radius:6px"></div>
+    <button class="color-popup-close" onclick="closeBrandModelPopup()">Annullér</button>
+  </div>
+</div>
+
 <!-- Hurtig-opret kunde modal -->
 <div class="color-popup-overlay" id="kundeModal" onclick="if(event.target===this)closeKundeCreateModal()">
   <div class="color-popup" style="max-width:420px">
@@ -907,7 +949,7 @@
 <div class="header">
   <img src="/TETOS_LOGO.png" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.065 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.066 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -2531,71 +2573,75 @@ function searchBrandInline(lineIdx, query) {
   const q = (query||'').toLowerCase().trim();
   gl.brandSearch = q;
 
+  if(!q) return;
+
+  const allBrands = [...new Set(garments.map(g=>g.brand).filter(Boolean))].sort();
+  const matches = allBrands.filter(b => b.toLowerCase().includes(q));
+
   // Auto-select ved præcis 1 match (kun hvis det ikke allerede er valgt)
-  if(q) {
-    const allBrands = [...new Set(garments.map(g=>g.brand).filter(Boolean))];
-    const matches = allBrands.filter(b => b.toLowerCase().includes(q));
-    if(matches.length === 1 && gl.brandFilter !== matches[0]) {
-      gl.brandFilter = matches[0];
-      gl.brandSearch = '';     // Ryd søget — handlingen er færdig
-      gl.modelSearch = '';     // Ryd model-søg også (ny brand → ny model-liste)
-      gl.sku = ''; gl.name = ''; gl.costPrice = 0; gl.salePrice = 0;
-      gl.availColors = []; gl.availSizes = []; gl.sizeQtys = {};
-      renderGarmentLines();
-      return;
-    }
+  if(matches.length === 1 && gl.brandFilter !== matches[0]) {
+    gl.brandFilter = matches[0];
+    gl.brandSearch = '';     // Ryd søget — handlingen er færdig
+    gl.modelSearch = '';     // Ryd model-søg også (ny brand → ny model-liste)
+    gl.sku = ''; gl.name = ''; gl.costPrice = 0; gl.salePrice = 0;
+    gl.availColors = []; gl.availSizes = []; gl.sizeQtys = {};
+    renderGarmentLines();
+    return;
   }
 
-  // 0 eller flere matches → opdatér KUN brand-dropdownens options i DOM,
-  // så fokus i inputtet bevares (Safari ignorerer display:none på <option>,
-  // så vi rebuilder innerHTML for pålidelig filtering).
+  // Flere matches → åbn popup med listen
+  if(matches.length > 1) {
+    openBrandPopup(lineIdx, q);
+    return;
+  }
+
+  // 0 matches → ryd dropdownens options så brugeren ser at intet matcher
   const lineDiv = document.querySelectorAll('.gline')[lineIdx];
   if(!lineDiv) return;
   const sel = lineDiv.querySelector('.brand-select');
   if(!sel) return;
-  const allBrands = [...new Set(garments.map(g=>g.brand).filter(Boolean))].sort();
-  const filtered = q ? allBrands.filter(b=>b.toLowerCase().includes(q)) : allBrands;
-  const opts = filtered.map(b=>`<option value="${b}" ${b===gl.brandFilter?'selected':''}>${b}</option>`).join('');
-  sel.innerHTML = '<option value="">– Alle brands –</option>' + opts;
+  sel.innerHTML = '<option value="">– Ingen match –</option>';
 }
 
 // ── v1.061: Inline søgning ved siden af Vare / Model label ──
-// Matcher både modelnavn og SKU; auto-vælg ved præcis 1 match.
+// v1.066: Åbner popup ved flere matches; auto-vælg ved 1 match.
 function searchModelInline(lineIdx, query) {
   const gl = garmentLinesData[lineIdx];
   if(!gl) return;
   const q = (query||'').toLowerCase().trim();
   gl.modelSearch = q;
 
+  if(!q) return;
+
   // Beregn brand-filtreret garment-liste (samme som i renderGarmentLines)
   const filteredGarments = gl.brandFilter
     ? garments.filter(g=>g.brand===gl.brandFilter)
     : garments;
 
-  const matches = q
-    ? filteredGarments.filter(g => {
-        const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
-        return modelName.toLowerCase().includes(q) || g.sku.toLowerCase().includes(q);
-      })
-    : filteredGarments;
+  const matches = filteredGarments.filter(g => {
+    const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
+    return modelName.toLowerCase().includes(q) || g.sku.toLowerCase().includes(q);
+  });
 
-  // Auto-select ved 1 match — selectGarment sørger for resten (renderGarmentLines, billeder, etc.)
-  if(q && matches.length === 1 && gl.sku !== matches[0].sku) {
+  // Auto-select ved 1 match
+  if(matches.length === 1 && gl.sku !== matches[0].sku) {
     gl.modelSearch = '';
     selectGarment(lineIdx, matches[0].sku);
     return;
   }
 
-  // Ellers: opdatér kun model-dropdownens options i DOM, bevar fokus
+  // Flere matches → åbn popup
+  if(matches.length > 1) {
+    openModelPopup(lineIdx, q);
+    return;
+  }
+
+  // 0 matches → ryd dropdown
   const lineDiv = document.querySelectorAll('.gline')[lineIdx];
   if(!lineDiv) return;
   const sel = lineDiv.querySelector('.model-select');
   if(!sel) return;
-  const opts = matches.map(g=>{
-    const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
-    return `<option value="${g.sku}" ${g.sku===gl.sku?'selected':''}>${modelName} · ${g.sku}</option>`;
-  }).join('');
-  sel.innerHTML = '<option value="">– Vælg vare –</option>' + opts;
+  sel.innerHTML = '<option value="">– Ingen match –</option>';
 }
 
 
@@ -2692,8 +2738,152 @@ function pickGarmentColor(colorName) {
 
 // Escape lukker pop-up
 document.addEventListener('keydown', e => {
-  if(e.key === 'Escape') closeColorPicker();
+  if(e.key === 'Escape') {
+    closeColorPicker();
+    closeBrandModelPopup();
+  }
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.066: Brand/Model søgeresultat-popup
+// ──────────────────────────────────────────────────────────────────────
+let activeBmPopup = null;  // { lineIdx, type: 'brand' | 'model' }
+
+function openBrandPopup(lineIdx, initialQuery) {
+  activeBmPopup = { lineIdx, type: 'brand' };
+  document.getElementById('bmPopTitle').textContent = 'Vælg brand';
+  document.getElementById('bmPopSub').textContent = 'Klik på et brand for at vælge';
+  const inp = document.getElementById('bmPopSearchInput');
+  inp.placeholder = '🔍 Søg brand...';
+  inp.value = initialQuery || '';
+  renderBrandModelList(initialQuery || '');
+  document.getElementById('brandModelPopup').classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+
+function openModelPopup(lineIdx, initialQuery) {
+  activeBmPopup = { lineIdx, type: 'model' };
+  const gl = garmentLinesData[lineIdx];
+  document.getElementById('bmPopTitle').textContent = 'Vælg vare / model';
+  document.getElementById('bmPopSub').textContent = gl && gl.brandFilter
+    ? `Filtreret på brand: ${gl.brandFilter}`
+    : 'Klik på en vare for at vælge';
+  const inp = document.getElementById('bmPopSearchInput');
+  inp.placeholder = '🔍 Søg model eller SKU...';
+  inp.value = initialQuery || '';
+  renderBrandModelList(initialQuery || '');
+  document.getElementById('brandModelPopup').classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+
+function closeBrandModelPopup() {
+  document.getElementById('brandModelPopup').classList.remove('open');
+  activeBmPopup = null;
+}
+
+function filterBrandModelPopup(q) {
+  renderBrandModelList(q || '');
+}
+
+function renderBrandModelList(filter) {
+  if(!activeBmPopup) return;
+  const { lineIdx, type } = activeBmPopup;
+  const gl = garmentLinesData[lineIdx];
+  if(!gl) return;
+  const f = (filter||'').toLowerCase().trim();
+  const list = document.getElementById('bmPopList');
+
+  if(type === 'brand') {
+    const allBrands = [...new Set(garments.map(g=>g.brand).filter(Boolean))].sort();
+    const matches = f ? allBrands.filter(b => b.toLowerCase().includes(f)) : allBrands;
+    if(matches.length === 0) {
+      list.innerHTML = '<div class="bm-empty">Ingen brands matcher</div>';
+      return;
+    }
+    // Tæl modeller pr. brand for at vise lille badge
+    const countByBrand = {};
+    garments.forEach(g => {
+      if(g.brand) countByBrand[g.brand] = (countByBrand[g.brand]||0) + 1;
+    });
+    list.innerHTML = matches.map(b => {
+      const sel = b === gl.brandFilter;
+      const count = countByBrand[b] || 0;
+      return `<div class="bm-row${sel?' selected':''}" onclick="pickBrandFromPopup('${b.replace(/'/g,"\\'")}')">
+        <span>${escapeHtml(b)}</span>
+        <span class="bm-row-sub">${count} model${count===1?'':'ler'}</span>
+      </div>`;
+    }).join('');
+  } else {
+    // Model
+    const filteredGarments = gl.brandFilter
+      ? garments.filter(g=>g.brand===gl.brandFilter)
+      : garments;
+    const matches = f
+      ? filteredGarments.filter(g => {
+          const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
+          return modelName.toLowerCase().includes(f) || g.sku.toLowerCase().includes(f);
+        })
+      : filteredGarments;
+    if(matches.length === 0) {
+      list.innerHTML = '<div class="bm-empty">Ingen varer matcher</div>';
+      return;
+    }
+    // Sortér: foretrukne (selected) først, ellers alfabetisk
+    matches.sort((a,b) => {
+      if(a.sku === gl.sku) return -1;
+      if(b.sku === gl.sku) return 1;
+      return a.name.localeCompare(b.name, 'da-DK');
+    });
+    // Vis kun de første 200 for performance
+    const truncated = matches.slice(0, 200);
+    list.innerHTML = truncated.map(g => {
+      const modelName = g.name.includes('–') ? g.name.split('–').slice(1).join('–').trim() : g.name;
+      const sel = g.sku === gl.sku;
+      return `<div class="bm-row${sel?' selected':''}" onclick="pickModelFromPopup('${g.sku.replace(/'/g,"\\'")}')">
+        <span>${escapeHtml(modelName)}</span>
+        <span class="bm-row-sub">${escapeHtml(g.sku)}</span>
+      </div>`;
+    }).join('');
+    if(matches.length > 200) {
+      list.innerHTML += `<div class="bm-empty">… og ${matches.length - 200} flere — forfin søget for at se dem</div>`;
+    }
+  }
+}
+
+function pickBrandFromPopup(brand) {
+  if(!activeBmPopup) return;
+  const { lineIdx } = activeBmPopup;
+  closeBrandModelPopup();
+  const gl = garmentLinesData[lineIdx];
+  if(!gl) return;
+  gl.brandFilter = brand;
+  gl.brandSearch = '';
+  gl.modelSearch = '';
+  // Ryd vare-valg fordi brand'et er ændret → ny model-liste
+  gl.sku = ''; gl.name = ''; gl.costPrice = 0; gl.salePrice = 0;
+  gl.availColors = []; gl.availSizes = []; gl.sizeQtys = {};
+  renderGarmentLines();
+}
+
+function pickModelFromPopup(sku) {
+  if(!activeBmPopup) return;
+  const { lineIdx } = activeBmPopup;
+  closeBrandModelPopup();
+  const gl = garmentLinesData[lineIdx];
+  if(gl) gl.modelSearch = '';
+  selectGarment(lineIdx, sku);
+}
+
+// Hjælper: escape HTML for sikker rendering af bruger-data i innerHTML
+function escapeHtml(str) {
+  if(str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function selectColor(i, color) {
   const gl=garmentLinesData[i];
