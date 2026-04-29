@@ -4,12 +4,26 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.069
+  Version: 1.070
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.069  (2026-04-29)  ⭐ Aktuel — Nyt logo (SVG med hvid stroke)
+  v1.070  (2026-04-29)  ⭐ Aktuel — Design-zoner i stedet for tryk-position-kort
+          • Tryk-positioner vises nu som billed-felter pr. side:
+            - Forside: 80×100px med produktbillede (hvis tilgængeligt)
+              eller tekstil-farve-rektangel
+            - Bagside: 80×100px tekstil-farve-rektangel + drop-zone
+            - V. ærme + H. ærme: 40×40px tekstil-farve-rektangler
+          • Klik på felt aktiverer/deaktiverer (samme som tidligere kort)
+          • Aktiv: blå ramme (var(--blue, #185FA5)) + ✓ markør i hjørnet
+          • Inaktiv: faded med "+"-symbol
+          • Pris vises kun under aktive felter (X kr/stk)
+          • Størrelse-dropdown stadig under aktive front/back
+          • Forberedelse til design-upload (kommer i v1.071)
+          • Erstatter de grønne tryk-pos kort fra v1.050
+
+  v1.069  (2026-04-29) — Nyt logo (SVG med hvid stroke)
           • Ny fil: TETOS_logo.svg i repo-roden (~17 KB)
           • Erstatter brudt TETOS_LOGO.png (PSD-forveksling fra v1.064)
           • SVG har transparens + hvid stroke så TET-tekst og undertekst
@@ -206,7 +220,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.069 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.070 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -492,6 +506,114 @@
   .tryk-pos-select { display: none; margin-top: 6px; }
   .tryk-pos.active .tryk-pos-select { display: block; }
   .tryk-pos-select select { width: 100%; font-size: 11px; padding: 2px 4px; }
+
+  /* v1.070: Design-zoner — billed-felter pr. trykside */
+  .design-zones {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    padding: 10px 0;
+  }
+  .design-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+  }
+  .design-zone-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+  }
+  .design-zone-box {
+    border-radius: 6px;
+    border: 1.5px solid rgba(0,0,0,0.15);
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.12s, opacity 0.12s;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+  }
+  .design-zone-box.front  { width: 80px; height: 100px; }
+  .design-zone-box.back   { width: 80px; height: 100px; }
+  .design-zone-box.sleeve { width: 40px; height: 40px; }
+  /* Inaktiv: faded + plus-symbol */
+  .design-zone-box:not(.active):not(.disabled) { opacity: 0.55; }
+  .design-zone-box:not(.active):not(.disabled):hover { opacity: 0.85; border-color: rgba(0,0,0,0.3); }
+  .design-zone-plus {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.5);
+    font-size: 18px; font-weight: 500;
+    pointer-events: none;
+  }
+  .design-zone-box.sleeve .design-zone-plus { font-size: 14px; }
+  /* Aktiv: blå ramme + ✓ */
+  .design-zone-box.active {
+    border: 2px solid #185FA5;
+  }
+  .design-zone-box.active .design-zone-plus { display: none; }
+  .design-zone-box.active .design-zone-drop {
+    position: absolute;
+    inset: 12px 16px;
+    border: 2px dashed rgba(255,255,255,0.6);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: rgba(255,255,255,0.75);
+    text-align: center;
+    pointer-events: none;
+  }
+  .design-zone-box.sleeve.active .design-zone-drop {
+    inset: 4px 5px;
+    font-size: 7px;
+    border-width: 1.5px;
+  }
+  .design-zone-box .design-zone-check {
+    position: absolute;
+    top: -5px; right: -5px;
+    width: 16px; height: 16px;
+    background: #185FA5;
+    border: 2px solid white;
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: white;
+    font-weight: 700;
+  }
+  .design-zone-box.sleeve .design-zone-check { width: 13px; height: 13px; font-size: 8px; }
+  .design-zone-box.active .design-zone-check { display: flex; }
+  .design-zone-price {
+    font-size: 10px;
+    font-weight: 500;
+    color: #185FA5;
+    margin-top: 4px;
+    height: 14px;     /* bevar layout-højde også når tom */
+    line-height: 14px;
+  }
+  .design-zone-size {
+    margin-top: 4px;
+    width: 100%;
+    display: none;
+  }
+  .design-zone.has-size-control.active .design-zone-size { display: block; }
+  .design-zone-size select { width: 100%; font-size: 10px; padding: 2px 4px; }
+  .design-zone-summary {
+    font-size: 11px;
+    color: var(--muted);
+    align-self: center;
+    padding-left: 6px;
+  }
 
   /* PRICE LINES */
   .price-section { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; color: var(--muted); padding: 10px 0 4px; text-transform: uppercase; }
@@ -1070,7 +1192,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.069 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.070 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3484,42 +3606,56 @@ function calcLineTryk(gl, lineQty) {
   return out;
 }
 
-// Byg HTML for tryk-sektion pr. linje
+// Byg HTML for tryk-sektion pr. linje (v1.070: design-zone billed-felter)
 function buildLineTrykSection(i, gl) {
   const positions = gl.positions || defaultGarmentLine().positions;
   const expanded = !!gl.trykExpanded;
   const posMeta = [
-    {key:'front',    title:'Forside',       sleeve:false},
-    {key:'back',     title:'Bagside',       sleeve:false},
-    {key:'sleeve_l', title:'Venstre ærme',  sleeve:true},
-    {key:'sleeve_r', title:'Højre ærme',    sleeve:true}
+    {key:'front',    title:'Forside',  short:'FORSIDE',  type:'front'},
+    {key:'back',     title:'Bagside',  short:'BAGSIDE',  type:'back'},
+    {key:'sleeve_l', title:'V. ærme',  short:'V. ÆRME',  type:'sleeve'},
+    {key:'sleeve_r', title:'H. ærme',  short:'H. ÆRME',  type:'sleeve'}
   ];
   // Beregn current lineQty for summary-tekst
   const lineQty = Object.values(gl.sizeQtys||{}).reduce((a,v)=>a+(+v||0),0) || (+gl.manualQty||0);
   const active = posMeta.filter(m => positions[m.key]?.active);
   const summary = active.length === 0
     ? 'ingen valgt'
-    : active.map(m => m.title.replace('Venstre ærme','V. ærme').replace('Højre ærme','H. ærme')).join(', ');
+    : active.map(m => m.title).join(', ');
 
-  const cards = posMeta.map(m => {
-    const pp = positions[m.key] || {active:false, size: m.sleeve ? 'small' : 'large'};
+  // Tekstil-farve (hex) til at vise som baggrund i felterne
+  const colorHexMap = gl.colorHexMap || {};
+  const tekstilFarve = gl.selectedColor
+    ? (colorHexMap[gl.selectedColor] || (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || '#888')
+    : '#888';
+
+  const zones = posMeta.map(m => {
+    const pp = positions[m.key] || {active:false, size: (m.type==='sleeve') ? 'small' : 'large'};
     const isActive = !!pp.active;
-    const size = pp.size || (m.sleeve ? 'small' : 'large');
+    const size = pp.size || ((m.type==='sleeve') ? 'small' : 'large');
     const priceInfo = getPrintPrice(m.key, size);
-    const sub = m.sleeve ? 'altid lille' : (isActive ? 'vælg størrelse' : 'klik for at aktivere');
-    const sizeSelect = m.sleeve ? '' : `
-      <div class="tryk-pos-select" onclick="event.stopPropagation()">
+    const hasSizeControl = (m.type !== 'sleeve');
+    const sizeSelect = hasSizeControl ? `
+      <div class="design-zone-size" onclick="event.stopPropagation()">
         <select onchange="setLinePosSize(${i}, '${m.key}', this.value)">
-          <option value="small"  ${size==='small' ?'selected':''}>Lille (op til 10×10 cm)</option>
-          <option value="large"  ${size==='large' ?'selected':''}>Stort (op til 26×35 cm)</option>
-          <option value="xl"     ${size==='xl'    ?'selected':''}>Ekstra stort (over 26×35 cm)</option>
+          <option value="small" ${size==='small' ? 'selected':''}>Lille (≤10×10 cm)</option>
+          <option value="large" ${size==='large' ? 'selected':''}>Stort (≤26×35 cm)</option>
+          <option value="xl"    ${size==='xl'    ? 'selected':''}>Ekstra stort</option>
         </select>
-      </div>`;
+      </div>` : '';
+    const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
     return `
-      <div class="tryk-pos ${isActive?'active':''}" onclick="toggleLinePos(${i}, '${m.key}')">
-        <div class="tryk-pos-title">${m.title}</div>
-        <div class="tryk-pos-sub">${sub}</div>
-        <div class="tryk-pos-price" id="tryk_price_${i}_${m.key}">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
+      <div class="design-zone ${hasSizeControl ? 'has-size-control' : ''} ${isActive ? 'active' : ''}">
+        <div class="design-zone-label">${m.short}</div>
+        <div class="design-zone-box ${m.type} ${isActive ? 'active' : ''}"
+             style="background-color:${tekstilFarve}"
+             title="${m.title} — klik for at ${isActive ? 'fjerne' : 'aktivere'}"
+             onclick="toggleLinePos(${i}, '${m.key}')">
+          <div class="design-zone-plus">+</div>
+          <div class="design-zone-drop">${dropZoneText}</div>
+          <div class="design-zone-check">✓</div>
+        </div>
+        <div class="design-zone-price" id="tryk_price_${i}_${m.key}">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
         ${sizeSelect}
       </div>`;
   }).join('');
@@ -3531,7 +3667,7 @@ function buildLineTrykSection(i, gl) {
         <span class="tryk-header-summary">${summary}${lineQty>0 ? ' · '+lineQty+' stk' : ''}</span>
       </div>
       <div class="tryk-content">
-        <div class="tryk-grid">${cards}</div>
+        <div class="design-zones">${zones}</div>
       </div>
     </div>`;
 }
