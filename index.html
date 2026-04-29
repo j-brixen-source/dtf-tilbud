@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.068
+  Version: 1.069
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.068  (2026-04-28)  ⭐ Aktuel — Settings flyttet til Supabase (globale)
+  v1.069  (2026-04-29)  ⭐ Aktuel — Nyt logo (SVG med hvid stroke)
+          • Ny fil: TETOS_logo.svg i repo-roden (~17 KB)
+          • Erstatter brudt TETOS_LOGO.png (PSD-forveksling fra v1.064)
+          • SVG har transparens + hvid stroke så TET-tekst og undertekst
+            er læsbare på mørk baggrund (header)
+          • Ingen layout-ændringer — header bliver mørk, login er som
+            den var, logo passer begge steder
+          • Begge <img>-tags peger nu på /TETOS_logo.svg
+
+  v1.068  (2026-04-28) — Settings flyttet til Supabase (globale)
           • 16 settings (mu_*, p_*, setup, ordrehåndtering, rabat, eur_dkk)
             gemmes nu i Supabase 'indstillinger'-tabellen — fælles for alle
           • Ny "Gem ændringer"-knap øverst i Indstillinger:
@@ -197,7 +206,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.068 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.069 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -944,7 +953,7 @@
      ════════════════════════════════════════════════════════════ -->
 <div id="loginOverlay" style="display:none;position:fixed;inset:0;background:#1a1a1a;z-index:9999;align-items:center;justify-content:center">
   <div style="display:flex;flex-direction:column;align-items:center;gap:24px">
-    <img src="/TETOS_LOGO.png" alt="TETOS — Tekstil-tryk.dk Ordre System"
+    <img src="/TETOS_logo.svg" alt="TETOS — Tekstil-tryk.dk Ordre System"
       style="max-width:340px;width:80vw;height:auto">
     <div style="background:white;border-radius:12px;padding:36px 40px;min-width:380px;max-width:440px;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
       <form id="loginForm" onsubmit="return doLogin(event)">
@@ -1059,9 +1068,9 @@
 </div>
 
 <div class="header">
-  <img src="/TETOS_LOGO.png" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
+  <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.068 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.069 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
