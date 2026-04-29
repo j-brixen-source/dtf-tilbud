@@ -4,12 +4,28 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.083
+  Version: 1.085
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.083  (2026-04-29)  ⭐ Aktuel — Fix warning-detektion: alfa-threshold
+  v1.085  (2026-04-29)  ⭐ Aktuel — Fix object-fit: contain bug i warning-detektion
+          • Tidligere: warning-beregning antog billedet fyldte hele zonen
+          • Det er forkert — billedet vises med object-fit: contain, så
+            non-square billeder fylder kun en del af zonen (bredden eller højden)
+          • Beregner nu korrekt hvor billedet faktisk vises i zonen via
+            aspect-ratio, og mapper content-bounds til den korrekte position
+          • Eksempel: 1506×345 logo i 150×210 zone → billedet vises kun
+            midt i zonen, og content-bounds er nu i den rigtige position
+          • Inkluderer ny debug-output: imgAspect, zoneAspect, imgInZone
+
+  v1.084  (2026-04-29) — Version-stempel på login-skærm
+          • Lille "v1.084" tekst i nederste-højre hjørne af login-overlay
+          • Hurtigt overblik over hvilken version der er live uden
+            at logge ind først
+          • Tekst er diskret (10px, 45% opacity) så den ikke distraherer
+
+  v1.083  (2026-04-29) — Strict alpha-threshold (>128) for warning-detektion
           • Threshold hævet fra alpha > 10 til alpha > 128 (50% opaque)
           • Halv-transparente baggrunde (fx Photoshop-eksporter med
             mørk skygge-baggrund) tæller IKKE længere som "indhold"
@@ -338,7 +354,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.083 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.085 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1537,6 +1553,11 @@
       </div>
     </div>
   </div>
+  <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
+       se hvilken version der er live uden at logge ind først -->
+  <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
+    v1.085
+  </div>
 </div>
 
 <!-- ════════════════════════════════════════════════════════════
@@ -1628,7 +1649,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.083 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.085 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4396,18 +4417,51 @@ function isDesignContentOutsideBox(design) {
   if (!design.contentBounds) {
     return true;
   }
-  // For PNG/SVG: check om content-bounding-box (i % af billedet) krydser kanten
-  // contentBounds er i % af billedet; vi mapper til % af felt-boksen
+  // v1.084: Tag højde for object-fit: contain. Billedet fylder ikke hele zonen
+  // hvis billedets aspect-ratio er forskellig fra zonens aspect.
   const cb = design.contentBounds;
-  const contentLeftPct   = zoneLeft + (cb.minX / 100) * zoneW;
-  const contentTopPct    = zoneTop  + (cb.minY / 100) * zoneH;
-  const contentRightPct  = zoneLeft + (cb.maxX / 100) * zoneW;
-  const contentBottomPct = zoneTop  + (cb.maxY / 100) * zoneH;
+  const imgW = design.width || 1;
+  const imgH = design.height || 1;
+  const imgAspect = imgW / imgH;
+  // Felt-boks dimensioner i px — sleeves er 75×100, front/back er 150×210
+  // Vi gemmer pos-typen (sleeve eller front/back) som 'positionType' på designet
+  const isSleeveBox = (design.positionType === 'sleeve');
+  const boxW = isSleeveBox ? 75 : 150;
+  const boxH = isSleeveBox ? 100 : 210;
+  const boxAspect = boxW / boxH;
+  // Zone aspect i pixels = (zoneW% × boxW) / (zoneH% × boxH) = zoneW/zoneH × boxAspect
+  const zoneAspect = (zoneW / zoneH) * boxAspect;
+  // Find hvor billedet vises i zonen (i % af zonen) efter object-fit: contain
+  let imgInZoneLeft = 0, imgInZoneTop = 0;
+  let imgInZoneWidth = 100, imgInZoneHeight = 100;
+  if (imgAspect > zoneAspect) {
+    // Billedet er bredere end zone — fylder bredden, vertikal margin top/bund
+    imgInZoneHeight = (zoneAspect / imgAspect) * 100;
+    imgInZoneTop = (100 - imgInZoneHeight) / 2;
+  } else if (imgAspect < zoneAspect) {
+    // Billedet er smallere end zone — fylder højden, horizontal margin venstre/højre
+    imgInZoneWidth = (imgAspect / zoneAspect) * 100;
+    imgInZoneLeft = (100 - imgInZoneWidth) / 2;
+  }
+  // Map content-bounds (% af billedet) til % af zonen
+  const contentInZoneLeft   = imgInZoneLeft + (cb.minX / 100) * imgInZoneWidth;
+  const contentInZoneTop    = imgInZoneTop  + (cb.minY / 100) * imgInZoneHeight;
+  const contentInZoneRight  = imgInZoneLeft + (cb.maxX / 100) * imgInZoneWidth;
+  const contentInZoneBottom = imgInZoneTop  + (cb.maxY / 100) * imgInZoneHeight;
+  // Map fra % af zone til % af felt-boks
+  const contentLeftPct   = zoneLeft + (contentInZoneLeft   / 100) * zoneW;
+  const contentTopPct    = zoneTop  + (contentInZoneTop    / 100) * zoneH;
+  const contentRightPct  = zoneLeft + (contentInZoneRight  / 100) * zoneW;
+  const contentBottomPct = zoneTop  + (contentInZoneBottom / 100) * zoneH;
   const isOutside = (contentLeftPct < 0 || contentTopPct < 0 ||
                      contentRightPct > 100 || contentBottomPct > 100);
-  // v1.080: Debug-output
+  // v1.084: Debug-output med ny info
   if (typeof dbLog === 'function') {
-    dbLog(`Warning-check`, `pos=(${pos.x.toFixed(1)},${pos.y.toFixed(1)}) zone=${zoneW.toFixed(1)}×${zoneH.toFixed(1)} cb=(${cb.minX.toFixed(0)},${cb.minY.toFixed(0)}-${cb.maxX.toFixed(0)},${cb.maxY.toFixed(0)}) contentArea=(${contentLeftPct.toFixed(1)},${contentTopPct.toFixed(1)}-${contentRightPct.toFixed(1)},${contentBottomPct.toFixed(1)}) outside=${isOutside}`);
+    dbLog(`Warning-check`,
+      `imgAspect=${imgAspect.toFixed(2)} zoneAspect=${zoneAspect.toFixed(2)} ` +
+      `imgInZone=(${imgInZoneLeft.toFixed(0)},${imgInZoneTop.toFixed(0)}-${(imgInZoneLeft+imgInZoneWidth).toFixed(0)},${(imgInZoneTop+imgInZoneHeight).toFixed(0)}) ` +
+      `cb=(${cb.minX.toFixed(0)},${cb.minY.toFixed(0)}-${cb.maxX.toFixed(0)},${cb.maxY.toFixed(0)}) ` +
+      `content=(${contentLeftPct.toFixed(1)},${contentTopPct.toFixed(1)}-${contentRightPct.toFixed(1)},${contentBottomPct.toFixed(1)}) outside=${isOutside}`);
   }
   return isOutside;
 }
@@ -4837,12 +4891,13 @@ function buildLineTrykSection(i, gl) {
         : `<div style="font-size:24px">📄</div><div>PDF</div>`;
 
       // v1.079: Warning-detektion — tjek om indhold går udover felt-boksen
-      // Vi skal beregne med den nuværende skalerede zone
+      // v1.084: send positionType (sleeve vs front/back) for korrekt aspect-beregning
       const designForCheck = {
         ...design,
         position: { x: posX, y: posY },
         zoneWidthPct: zoneW,
-        zoneHeightPct: zoneH
+        zoneHeightPct: zoneH,
+        positionType: m.type   // 'front', 'back', eller 'sleeve'
       };
       const hasWarning = isDesignContentOutsideBox(designForCheck);
 
