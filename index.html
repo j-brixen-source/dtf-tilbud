@@ -4,12 +4,17 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.074
+  Version: 1.075
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.074  (2026-04-29)  ⭐ Aktuel — Tydelig størrelses-label på aktive design-zoner
+  v1.075  (2026-04-29)  ⭐ Aktuel — Rul label tilbage til v1.073-stil (stabil)
+          • v1.074-aktiv-label gjorde felterne ustabile (hopper ved klik)
+          • Tilbage til simpel: lille "FORSIDE" label + cm-badge under
+          • Forberedelse til upload-funktionalitet i v1.076
+
+  v1.074  (2026-04-29) — Tydelig størrelses-label på aktive design-zoner
           • Aktive felter viser nu størrelse + cm-mål TYDELIGT øverst,
             erstatter den lille "FORSIDE"-label
           • Eksempel: "Forside · Stort 26 × 35 cm" (i stedet for bare "FORSIDE")
@@ -258,7 +263,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.074 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.075 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -558,10 +563,8 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.074: bevar fast min-højde så felter ikke hopper op/ned ved aktivering.
-       Aktiv: stor label (~34px) + box (125px) + price (14px) + size-select (~24px) + gaps
-       Inaktiv: lille label (~14px) + box (125px) + price (14px) + size-select (~24px hidden) */
-    min-height: 215px;
+    /* v1.075: stabil min-højde, plads til label + box + price + dim + size-select */
+    min-height: 209px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -570,30 +573,6 @@
     margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-weight: 500;
-  }
-  /* v1.074: Stor label på aktive felter — viser position + størrelse + cm */
-  .design-zone-label-active {
-    font-size: 13px;
-    color: #185FA5;
-    font-weight: 600;
-    margin-bottom: 6px;
-    text-align: center;
-    line-height: 1.3;
-    min-height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .design-zone-label-active .dz-pos {
-    font-weight: 600;
-  }
-  .design-zone-label-active .dz-sep {
-    margin: 0 6px;
-    color: var(--muted);
-    font-weight: 400;
-  }
-  .design-zone-label-active .dz-size {
     font-weight: 500;
   }
   .design-zone-box {
@@ -1285,7 +1264,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.074 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.075 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3853,29 +3832,11 @@ function buildLineTrykSection(i, gl) {
         </select>
       </div>` : '';
     const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
-    // v1.074: Tydelig stor label øverst når aktivt — viser position + størrelse + cm
-    // Sleeves er små felter, så de får en kort version
-    const sizeName = {small: 'Lille', large: 'Stort', xl: 'Ekstra stort'};
-    let labelHtml;
-    if (isActive) {
-      if (m.type === 'sleeve') {
-        // Sleeves er smalle, hold det kort: "V. ærme · 8×8 cm"
-        labelHtml = `<div class="design-zone-label-active">
-          <span><span class="dz-pos">${m.title}</span>${currentDim ? `<span class="dz-sep">·</span><span class="dz-size">${currentDim}</span>` : ''}</span>
-        </div>`;
-      } else {
-        // Front/back: "Forside · Stort 26 × 35 cm"
-        const sz = sizeName[size] || size;
-        labelHtml = `<div class="design-zone-label-active">
-          <span><span class="dz-pos">${m.title}</span><span class="dz-sep">·</span><span class="dz-size">${sz}${currentDim ? ' ' + currentDim : ''}</span></span>
-        </div>`;
-      }
-    } else {
-      labelHtml = `<div class="design-zone-label">${m.short}</div>`;
-    }
+    // v1.073-stil: lille label øverst + dim-badge under (stabilt layout)
+    const dimBadge = (isActive && currentDim) ? `<div class="design-zone-dim">${currentDim}</div>` : '';
     return `
       <div class="design-zone ${hasSizeControl ? 'has-size-control' : ''} ${isActive ? 'active' : ''}">
-        ${labelHtml}
+        <div class="design-zone-label">${m.short}</div>
         <div class="design-zone-box ${m.type} ${isActive ? 'active' : ''}"
              style="background-color:${tekstilFarve}"
              title="${m.title} — klik for at ${isActive ? 'fjerne' : 'aktivere'}${currentDim ? ' (max '+currentDim+')' : ''}"
@@ -3885,6 +3846,7 @@ function buildLineTrykSection(i, gl) {
           <div class="design-zone-check">✓</div>
         </div>
         <div class="design-zone-price" id="tryk_price_${i}_${m.key}">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
+        ${dimBadge}
         ${sizeSelect}
       </div>`;
   }).join('');
