@@ -4,12 +4,27 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.080
+  Version: 1.082
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.080  (2026-04-29)  ⭐ Aktuel — Fix drag-handles + bredde×højde + debug
+  v1.082  (2026-04-29)  ⭐ Aktuel — Massiv debug-output i alfa-analyse
+          • analyzeAlphaContent logger HVERT skridt: start, FileReader-load,
+            Image-load, canvas-status, pixel-tælling, bounding-box-resultat
+          • Skal hjælpe os finde præcis hvor alfa-analysen fejler/skipper
+          • Brug: åbn Indstillinger → Avanceret → Debug log før upload
+
+  v1.081  (2026-04-29) — Skaleret cm-størrelse i badge
+          • Når et design er uploadet og skaleret ned, vises den faktiske
+            skalerede størrelse i cm i badgen under feltet
+          • Eksempel: Hvis Stort 26×35 er valgt og scale = 50%, vises
+            "13 × 17 cm (af 26 × 35)"
+          • Hvis scale = 100% (max): vises bare "26 × 35 cm"
+          • Warning-debug stadig aktivt (v1.080) — skal hjælpe med at
+            finde den falske warning-bug
+
+  v1.080  (2026-04-29) — Fix drag-handles + bredde×højde + debug
           • FIX: Drag-handles virkede baglæns (drag UDAD = mindre, indad =
             større). Korrekt nu: udad = større, indad = mindre.
           • Bredde × højde i pixels vises ved siden af DPI-badge
@@ -315,7 +330,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.080 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.082 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1605,7 +1620,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.080 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.082 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4276,32 +4291,37 @@ function getDefaultDesignPosition(pos, zonePct) {
 // hvor designet faktisk har ikke-transparente pixels. Null hvis hele billedet
 // er transparent (skulle ikke ske) eller analyse fejler.
 async function analyzeAlphaContent(file) {
+  if (typeof dbLog === 'function') dbLog('analyzeAlphaContent START', `${file.name} type=${file.type} size=${file.size}`);
   if (file.type !== 'image/png' && file.type !== 'image/svg+xml') {
-    return null; // JPG har ingen alfa, returnér null = "hele billedet er indhold"
+    if (typeof dbLog === 'function') dbLog('analyzeAlphaContent SKIP', `${file.type} har ingen alfa`);
+    return null;
   }
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
+      if (typeof dbLog === 'function') dbLog('analyzeAlphaContent', 'FileReader færdig');
       const img = new Image();
       img.onload = () => {
+        if (typeof dbLog === 'function') dbLog('analyzeAlphaContent', `Image loaded ${img.naturalWidth}×${img.naturalHeight}`);
         try {
-          // Skalér ned til max 200px for hurtig analyse
           const maxDim = 200;
           const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
           const w = Math.max(1, Math.floor(img.naturalWidth * scale));
           const h = Math.max(1, Math.floor(img.naturalHeight * scale));
           const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
+          canvas.width = w; canvas.height = h;
           const ctx = canvas.getContext('2d', { willReadFrequently: true });
           ctx.drawImage(img, 0, 0, w, h);
           const data = ctx.getImageData(0, 0, w, h).data;
+          if (typeof dbLog === 'function') dbLog('analyzeAlphaContent', `Canvas ${w}×${h} pixel-data hentet (${data.length} bytes)`);
           // Find content-bounding-box (alpha > 10 anses som "indhold")
           let minX = w, minY = h, maxX = -1, maxY = -1;
+          let nonTransparentCount = 0;
           for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
               const alpha = data[(y * w + x) * 4 + 3];
               if (alpha > 10) {
+                nonTransparentCount++;
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
@@ -4309,27 +4329,37 @@ async function analyzeAlphaContent(file) {
               }
             }
           }
+          if (typeof dbLog === 'function') dbLog('analyzeAlphaContent', `Ikke-transparente pixels: ${nonTransparentCount}/${w*h} (${(nonTransparentCount/(w*h)*100).toFixed(1)}%)`);
           if (maxX < 0) {
-            // Helt transparent fil
+            if (typeof dbLog === 'function') dbLog('analyzeAlphaContent', 'Helt transparent — returnerer null');
             resolve(null);
             return;
           }
-          // Returnér i procent
-          resolve({
+          const result = {
             minX: (minX / w) * 100,
             minY: (minY / h) * 100,
             maxX: ((maxX + 1) / w) * 100,
             maxY: ((maxY + 1) / h) * 100
-          });
+          };
+          if (typeof dbLog === 'function') {
+            dbLog('analyzeAlphaContent OK', `bounds: ${result.minX.toFixed(1)},${result.minY.toFixed(1)} – ${result.maxX.toFixed(1)},${result.maxY.toFixed(1)} (% af billedet)`);
+          }
+          resolve(result);
         } catch (err) {
-          dbLog('analyzeAlphaContent: canvas-fejl (CORS?)', err.message);
+          if (typeof dbLog === 'function') dbLog('analyzeAlphaContent CANVAS-FEJL', err.message);
           resolve(null);
         }
       };
-      img.onerror = () => resolve(null);
+      img.onerror = () => {
+        if (typeof dbLog === 'function') dbLog('analyzeAlphaContent IMG-LOAD-FEJL');
+        resolve(null);
+      };
       img.src = e.target.result;
     };
-    reader.onerror = () => resolve(null);
+    reader.onerror = () => {
+      if (typeof dbLog === 'function') dbLog('analyzeAlphaContent FILE-READ-FEJL');
+      resolve(null);
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -4701,7 +4731,24 @@ function buildLineTrykSection(i, gl) {
       </div>` : '';
     const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
     // v1.073-stil: lille label øverst + dim-badge under (stabilt layout)
-    const dimBadge = (isActive && currentDim) ? `<div class="design-zone-dim">${currentDim}</div>` : '';
+    // v1.081: Hvis design uploadet, vis SKALERET cm-størrelse (max × scale%)
+    const _dimCm = getTrykDimensions(m.key, size);  // lokal — undgår clash med senere dimCm
+    let dimBadgeText = currentDim;
+    const _designForDim = gl.designs?.[m.key];
+    if (_designForDim && _dimCm && typeof _designForDim.scalePercent === 'number') {
+      const sc = _designForDim.scalePercent / 100;
+      const sw = (_dimCm.w * sc);
+      const sh = (_dimCm.h * sc);
+      const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+      const skaleret = `${fmt(sw)} × ${fmt(sh)} cm`;
+      // Vis "13 × 17 cm (af 26 × 35)" hvis skaleret < max
+      if (Math.abs(_designForDim.scalePercent - 100) > 0.5) {
+        dimBadgeText = `${skaleret} (af ${currentDim})`;
+      } else {
+        dimBadgeText = skaleret;
+      }
+    }
+    const dimBadge = (isActive && dimBadgeText) ? `<div class="design-zone-dim">${dimBadgeText}</div>` : '';
 
     // v1.076: Tre tilstande på feltet:
     //   1. Inaktiv → klik = aktivér position
