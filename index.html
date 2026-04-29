@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.070
+  Version: 1.071
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.070  (2026-04-29)  ⭐ Aktuel — Design-zoner i stedet for tryk-position-kort
+  v1.071  (2026-04-29)  ⭐ Aktuel — Design-zoner: stabil højde + +25% størrelse
+          • Front/back: 80×100 → 100×125 px
+          • Sleeves: 40×40 → 50×50 px
+          • Felter har nu fast min-højde (195px) så de IKKE hopper op/ned
+            ved aktivering
+          • Størrelses-dropdown er altid placeret men 'visibility:hidden'
+            indtil aktiv — bevarer layout stabilt
+          • Plus-symbol + drop-zone justeret til de nye størrelser
+
+  v1.070  (2026-04-29) — Design-zoner i stedet for tryk-position-kort
           • Tryk-positioner vises nu som billed-felter pr. side:
             - Forside: 80×100px med produktbillede (hvis tilgængeligt)
               eller tekstil-farve-rektangel
@@ -220,7 +229,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.070 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.071 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -520,6 +529,10 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
+    /* v1.071: bevar fast min-højde så felter ikke hopper op/ned ved aktivering.
+       Plads til: label (~14px) + box (125px) + price (14px) + size-select (~24px) + gaps */
+    min-height: 195px;
+    justify-content: flex-start;
   }
   .design-zone-label {
     font-size: 10px;
@@ -540,9 +553,9 @@
     background-repeat: no-repeat;
     overflow: hidden;
   }
-  .design-zone-box.front  { width: 80px; height: 100px; }
-  .design-zone-box.back   { width: 80px; height: 100px; }
-  .design-zone-box.sleeve { width: 40px; height: 40px; }
+  .design-zone-box.front  { width: 100px; height: 125px; }
+  .design-zone-box.back   { width: 100px; height: 125px; }
+  .design-zone-box.sleeve { width: 50px; height: 50px; }
   /* Inaktiv: faded + plus-symbol */
   .design-zone-box:not(.active):not(.disabled) { opacity: 0.55; }
   .design-zone-box:not(.active):not(.disabled):hover { opacity: 0.85; border-color: rgba(0,0,0,0.3); }
@@ -550,10 +563,10 @@
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     color: rgba(255,255,255,0.5);
-    font-size: 18px; font-weight: 500;
+    font-size: 22px; font-weight: 500;
     pointer-events: none;
   }
-  .design-zone-box.sleeve .design-zone-plus { font-size: 14px; }
+  .design-zone-box.sleeve .design-zone-plus { font-size: 16px; }
   /* Aktiv: blå ramme + ✓ */
   .design-zone-box.active {
     border: 2px solid #185FA5;
@@ -561,20 +574,20 @@
   .design-zone-box.active .design-zone-plus { display: none; }
   .design-zone-box.active .design-zone-drop {
     position: absolute;
-    inset: 12px 16px;
+    inset: 16px 20px;
     border: 2px dashed rgba(255,255,255,0.6);
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
-    color: rgba(255,255,255,0.75);
+    font-size: 10px;
+    color: rgba(255,255,255,0.78);
     text-align: center;
     pointer-events: none;
   }
   .design-zone-box.sleeve.active .design-zone-drop {
-    inset: 4px 5px;
-    font-size: 7px;
+    inset: 5px 6px;
+    font-size: 8px;
     border-width: 1.5px;
   }
   .design-zone-box .design-zone-check {
@@ -604,9 +617,11 @@
   .design-zone-size {
     margin-top: 4px;
     width: 100%;
-    display: none;
+    /* v1.071: optag altid plads — bare skjul med visibility for stabil layout */
+    visibility: hidden;
   }
-  .design-zone.has-size-control.active .design-zone-size { display: block; }
+  .design-zone.has-size-control.active .design-zone-size { visibility: visible; }
+  .design-zone:not(.has-size-control) .design-zone-size { display: none; }
   .design-zone-size select { width: 100%; font-size: 10px; padding: 2px 4px; }
   .design-zone-summary {
     font-size: 11px;
@@ -1192,7 +1207,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.070 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.071 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
