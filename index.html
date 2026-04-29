@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.082
+  Version: 1.083
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.082  (2026-04-29)  ⭐ Aktuel — Massiv debug-output i alfa-analyse
+  v1.083  (2026-04-29)  ⭐ Aktuel — Fix warning-detektion: alfa-threshold
+          • Threshold hævet fra alpha > 10 til alpha > 128 (50% opaque)
+          • Halv-transparente baggrunde (fx Photoshop-eksporter med
+            mørk skygge-baggrund) tæller IKKE længere som "indhold"
+          • Kun stærkt synlige pixels tæller som "vil blive trykt"
+          • Det fixer falsk-positiv warning når kun transparent del af
+            design er udover felt-boks
+
+  v1.082  (2026-04-29) — Massiv debug-output i alfa-analyse
           • analyzeAlphaContent logger HVERT skridt: start, FileReader-load,
             Image-load, canvas-status, pixel-tælling, bounding-box-resultat
           • Skal hjælpe os finde præcis hvor alfa-analysen fejler/skipper
@@ -330,7 +338,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.082 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.083 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1620,7 +1628,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.082 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.083 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4314,13 +4322,16 @@ async function analyzeAlphaContent(file) {
           ctx.drawImage(img, 0, 0, w, h);
           const data = ctx.getImageData(0, 0, w, h).data;
           if (typeof dbLog === 'function') dbLog('analyzeAlphaContent', `Canvas ${w}×${h} pixel-data hentet (${data.length} bytes)`);
-          // Find content-bounding-box (alpha > 10 anses som "indhold")
+          // v1.083: Threshold hævet fra 10 til 128 — kun pixels der er over 50% opaque
+          // tæller som "indhold". Dette filtrerer halv-transparente baggrunde ud
+          // (fx fra Photoshop-eksporter) som ellers ville give falsk warning.
+          const ALPHA_THRESHOLD = 128;
           let minX = w, minY = h, maxX = -1, maxY = -1;
           let nonTransparentCount = 0;
           for (let y = 0; y < h; y++) {
             for (let x = 0; x < w; x++) {
               const alpha = data[(y * w + x) * 4 + 3];
-              if (alpha > 10) {
+              if (alpha > ALPHA_THRESHOLD) {
                 nonTransparentCount++;
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
