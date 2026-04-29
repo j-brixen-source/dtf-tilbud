@@ -4,12 +4,29 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.076
+  Version: 1.077
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.076  (2026-04-29)  ⭐ Aktuel — Design-upload (basal funktionalitet)
+  v1.077  (2026-04-29)  ⭐ Aktuel — T-shirt-canvas + proportional tryk-zone
+          • Felt-boks for forside/bagside: 100×125 → 150×210 px
+            (samme aspect-ratio som t-shirt 50×70 cm fladlagt)
+          • Sleeves: 50×50 → 75×100 px (proportional tryk-zone)
+          • Stiplet indre tryk-zone i KORREKT proportion til cm-målet:
+            - Lille 10×10 cm  → ca 30×30 px på t-shirt-canvas
+            - Stort 26×35 cm → ca 78×105 px
+            - XL 37×47 cm    → ca 111×141 px
+          • Designet placeres inde i tryk-zonen (max-størrelse)
+          • Default-position: forside ØVERST-HØJRE (venstre bryst når
+            trøje er på), bagside CENTRERET-NED, sleeves CENTRERET
+          • Designet kan trækkes frit rundt på t-shirten med musen,
+            begrænset til hele felt-boksen
+          • Position gemmes som procent på gl.designs[pos].position
+          • Glide-ind animation ved upload (0% → final position)
+          • Forberedelse til v1.078 (drag-handles til skaler-ned)
+
+  v1.076  (2026-04-29) — Design-upload (basal funktionalitet)
           • Klik på aktivt felt → fil-vælger åbner
           • Drag-and-drop fra fil-explorer → uploader filen
           • Validering: PNG/JPG/PDF/SVG, max 25 MB
@@ -275,7 +292,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.076 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.077 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -575,8 +592,8 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.076: stabil min-højde — plads til label + box + price + dim + filename + dpi-badge + size-select */
-    min-height: 245px;
+    /* v1.077: bump til 330px for at rumme 210px tall t-shirt-canvas + label/price/dim/fileinfo/select */
+    min-height: 330px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -598,9 +615,9 @@
     background-repeat: no-repeat;
     overflow: hidden;
   }
-  .design-zone-box.front  { width: 100px; height: 125px; }
-  .design-zone-box.back   { width: 100px; height: 125px; }
-  .design-zone-box.sleeve { width: 50px; height: 50px; }
+  .design-zone-box.front  { width: 150px; height: 210px; }
+  .design-zone-box.back   { width: 150px; height: 210px; }
+  .design-zone-box.sleeve { width: 75px; height: 100px; }
   /* Inaktiv: faded + plus-symbol */
   .design-zone-box:not(.active):not(.disabled) { opacity: 0.55; }
   .design-zone-box:not(.active):not(.disabled):hover { opacity: 0.85; border-color: rgba(0,0,0,0.3); }
@@ -679,20 +696,21 @@
   /* v1.076: Skjul drop-text når feltet IKKE er aktivt eller har design */
   .design-zone-box:not(.active) .design-zone-drop,
   .design-zone-box.has-design .design-zone-drop { display: none; }
-  /* v1.076: Vis drop-text på aktive uden design (overskriver gammel kun-active-regel) */
+  /* v1.076/077: Vis drop-text på aktive uden design (overskriver gammel kun-active-regel)
+     v1.077: justeret margen til 150×210 felt-bokse */
   .design-zone-box.active:not(.has-design) .design-zone-drop {
     position: absolute;
-    inset: 16px 18px;
+    inset: 30px 30px;
     border: 2px dashed rgba(255,255,255,0.65);
     border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: rgba(255,255,255,0.85);
+    font-size: 11px; color: rgba(255,255,255,0.85);
     text-align: center;
     pointer-events: none;
   }
   .design-zone-box.sleeve.active:not(.has-design) .design-zone-drop {
-    inset: 5px 6px;
-    font-size: 8px;
+    inset: 12px 14px;
+    font-size: 9px;
     border-width: 1.5px;
   }
   /* v1.076: Deaktivér-knap (X i hjørne) på aktive felter UDEN design */
@@ -770,6 +788,82 @@
   .design-zone-dpi.dpi-green  { background: #d1f7d6; color: #185b1f; }
   .design-zone-dpi.dpi-orange { background: #ffe6cc; color: #8a3a00; }
   .design-zone-dpi.dpi-yellow { background: #fff5b8; color: #8a6800; }
+
+  /* ──────────────────────────────────────────────────────────
+     v1.077: Proportional tryk-zone + drag-rundt-design
+     ────────────────────────────────────────────────────────── */
+
+  /* Tryk-zone: stiplet boks INDE i felt-boksen, proportional til cm-mål.
+     Position styres via inline left/top (procent), størrelse via inline w/h. */
+  .tryk-zone {
+    position: absolute;
+    border: 2px dashed rgba(255,255,255,0.7);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+    box-sizing: border-box;
+    pointer-events: none; /* parent-feltet håndterer clicks/drags */
+    transition: opacity 0.15s, border-color 0.15s;
+  }
+  .tryk-zone-label {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 9px;
+    color: rgba(255,255,255,0.85);
+    font-weight: 500;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .design-zone-box.sleeve .tryk-zone-label { font-size: 7px; }
+
+  /* Når et design er uploadet, vises det inde i tryk-zonen */
+  .design-zone-box.has-design .tryk-zone {
+    cursor: grab;
+    pointer-events: auto;     /* nu kan user dragge */
+    background: transparent;  /* designet selv har baggrund */
+    border-color: rgba(255,255,255,0.45);
+  }
+  .design-zone-box.has-design .tryk-zone:active { cursor: grabbing; }
+  .design-zone-box.has-design .tryk-zone.dragging {
+    cursor: grabbing;
+    border-color: #185FA5;
+    box-shadow: 0 0 0 2px rgba(24,95,165,0.25);
+  }
+  .design-zone-box.has-design .tryk-zone-label { display: none; }
+
+  /* Designet (img inde i tryk-zonen) */
+  .tryk-design-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    user-drag: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  /* Glide-ind animation: tryk-zonen starter på 0% opacity og animerer til 1 */
+  .tryk-zone.zone-animate-in {
+    animation: zone-fade-in 0.35s ease-out;
+  }
+  @keyframes zone-fade-in {
+    from { opacity: 0; transform: scale(0.85); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  /* PDF-fallback når der er en PDF i tryk-zonen */
+  .tryk-zone.is-pdf {
+    background: rgba(255,255,255,0.85);
+    border: 2px solid #d32f2f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: #555;
+    font-size: 9px;
+    font-weight: 600;
+  }
   /* v1.073: Read-only mål-span i kombineret pris-tabel (bagside, h. ærme) */
   .dim-readonly {
     display: inline-block;
@@ -1379,7 +1473,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.076 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.077 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3980,6 +4074,112 @@ function getDesignDpi(design, dimCm) {
   return { dpi: Math.round(dpiW), level };
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// v1.077: Tryk-zone-beregning + drag-rundt-design
+// ──────────────────────────────────────────────────────────────────────
+
+// T-shirt canvas størrelse i cm (fladlagt). Bruges som reference for proportional zone.
+const TSHIRT_CANVAS_CM = { w: 50, h: 70 };
+
+// Beregn tryk-zone størrelse i procent af felt-boksen
+// (dvs. cm-mål / canvas-størrelse)
+function getTrykZonePercent(pos, dimCm) {
+  if (!dimCm || !dimCm.w || !dimCm.h) return null;
+  const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
+  if (isSleeve) {
+    // Sleeves: tryk-zonen fylder altid 80% af sleeve-feltet (da feltet er lille)
+    return { wPct: 80, hPct: 80 };
+  }
+  // Forside/bagside: cm-mål i forhold til t-shirt-canvas
+  const wPct = Math.min(100, (dimCm.w / TSHIRT_CANVAS_CM.w) * 100);
+  const hPct = Math.min(100, (dimCm.h / TSHIRT_CANVAS_CM.h) * 100);
+  return { wPct, hPct };
+}
+
+// Default-position for et nyt design (procent af felt-boks: x=left, y=top)
+// pos er 'front'|'back'|'sleeve_l'|'sleeve_r', zonePct er output fra getTrykZonePercent
+function getDefaultDesignPosition(pos, zonePct) {
+  if (!zonePct) return { x: 50, y: 50 };
+  if (pos === 'sleeve_l' || pos === 'sleeve_r') {
+    // Centreret på sleeve
+    return { x: 50 - zonePct.wPct / 2, y: 50 - zonePct.hPct / 2 };
+  }
+  if (pos === 'front') {
+    // Øverst-højre (venstre bryst når trøje er på)
+    // x = højre side, justér så tryk-zonen ikke går ud over kanten
+    return { x: Math.max(0, 100 - zonePct.wPct - 8), y: 12 };
+  }
+  // Bagside: centreret-ned (brøst-omkring centreret)
+  return { x: 50 - zonePct.wPct / 2, y: 18 };
+}
+
+// Drag-rundt-state
+let _zoneDragState = null;
+
+function handleZoneDragStart(e, lineIdx, pos) {
+  e.preventDefault();
+  e.stopPropagation();
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  const design = gl.designs?.[pos]; if (!design) return;
+  const box = document.getElementById(`design_box_${lineIdx}_${pos}`);
+  if (!box) return;
+  const rect = box.getBoundingClientRect();
+  const zone = e.currentTarget;
+  zone.classList.add('dragging');
+  // Hvor er klikket på zonen? (offset fra zonens øverste-venstre i pixels)
+  const zoneRect = zone.getBoundingClientRect();
+  _zoneDragState = {
+    lineIdx, pos,
+    box, zone,
+    boxRect: rect,
+    offsetX: e.clientX - zoneRect.left,
+    offsetY: e.clientY - zoneRect.top,
+    zoneW: zoneRect.width,
+    zoneH: zoneRect.height
+  };
+}
+
+function handleZoneDragMove(e) {
+  if (!_zoneDragState) return;
+  const { box, zone, boxRect, offsetX, offsetY, zoneW, zoneH } = _zoneDragState;
+  // Beregn ny zone-position (i pixels relativt til feltets øverste-venstre)
+  let zoneLeftPx = e.clientX - boxRect.left - offsetX;
+  let zoneTopPx  = e.clientY - boxRect.top - offsetY;
+  // Begræns: zonen må ikke gå ud over felt-boksens grænser
+  zoneLeftPx = Math.max(0, Math.min(boxRect.width  - zoneW, zoneLeftPx));
+  zoneTopPx  = Math.max(0, Math.min(boxRect.height - zoneH, zoneTopPx));
+  // Konverter til procent (relativt til felt-bokses bredde/højde)
+  const xPct = (zoneLeftPx / boxRect.width) * 100;
+  const yPct = (zoneTopPx  / boxRect.height) * 100;
+  zone.style.left = xPct + '%';
+  zone.style.top  = yPct + '%';
+  zone.dataset.x = xPct.toFixed(2);
+  zone.dataset.y = yPct.toFixed(2);
+}
+
+function handleZoneDragEnd() {
+  if (!_zoneDragState) return;
+  const { lineIdx, pos, zone } = _zoneDragState;
+  zone.classList.remove('dragging');
+  // Persistér position på gl.designs
+  const gl = garmentLinesData[lineIdx];
+  if (gl && gl.designs?.[pos]) {
+    const x = parseFloat(zone.dataset.x);
+    const y = parseFloat(zone.dataset.y);
+    if (!isNaN(x) && !isNaN(y)) {
+      gl.designs[pos].position = { x, y };
+    }
+  }
+  _zoneDragState = null;
+}
+
+// Globale listeners på document så drag fortsætter selv om musen forlader zonen
+if (typeof window !== 'undefined' && !window._zoneDragListenersAttached) {
+  document.addEventListener('mousemove', handleZoneDragMove);
+  document.addEventListener('mouseup', handleZoneDragEnd);
+  window._zoneDragListenersAttached = true;
+}
+
 function toggleTrykSection(lineIdx) {
   const gl = garmentLinesData[lineIdx]; if(!gl) return;
   gl.trykExpanded = !gl.trykExpanded;
@@ -4138,6 +4338,9 @@ function buildLineTrykSection(i, gl) {
     const dpiInfo = (isActive && design) ? getDesignDpi(design, getTrykDimensions(m.key, size)) : null;
 
     let boxClick, boxDragOver, boxDragLeave, boxDrop, boxStyle, boxInner, deactivateBtn;
+    // v1.077: Beregn tryk-zone proportional + default-position
+    const dimCm = getTrykDimensions(m.key, size);
+    const zonePct = getTrykZonePercent(m.key, dimCm);
     if (!isActive) {
       // Tilstand 1: inaktiv
       boxClick = `onclick="toggleLinePos(${i}, '${m.key}')"`;
@@ -4149,35 +4352,54 @@ function buildLineTrykSection(i, gl) {
       deactivateBtn = '';
     } else if (!design) {
       // Tilstand 2: aktiv, intet design — klik = upload, drop = upload
+      // v1.077: Vis tryk-zonen som visuel skala-indikator
       boxClick = `onclick="triggerDesignUpload(${i}, '${m.key}')"`;
       boxDragOver  = `ondragover="handleDesignDragOver(event, ${i}, '${m.key}')"`;
       boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
       boxDrop      = `ondrop="handleDesignDrop(event, ${i}, '${m.key}')"`;
       boxStyle = `background-color:${tekstilFarve}`;
+      // Indikator-zone: proportional til cm-mål, vist hvor designet vil komme som default
+      let zoneIndicatorHtml = '';
+      if (zonePct && currentDim) {
+        const defPos = getDefaultDesignPosition(m.key, zonePct);
+        zoneIndicatorHtml = `
+          <div class="tryk-zone" style="left:${defPos.x}%;top:${defPos.y}%;width:${zonePct.wPct}%;height:${zonePct.hPct}%">
+            <div class="tryk-zone-label">${currentDim}</div>
+          </div>`;
+      }
       boxInner = `
+        ${zoneIndicatorHtml}
         <div class="design-zone-drop">${dropZoneText}</div>
         <div class="design-zone-check">✓</div>`;
-      // Lille deaktivér-knap (X i øverste-venstre hjørne) når aktiv uden design
       deactivateBtn = `<button class="design-zone-deactivate" onclick="event.stopPropagation(); toggleLinePos(${i}, '${m.key}')" title="Fjern position">×</button>`;
     } else {
-      // Tilstand 3: aktiv + design uploadet — vis billedet
-      boxClick = '';  // ingen klik-handler — bruger interagerer via fjern-knap
+      // Tilstand 3: aktiv + design uploadet — vis tryk-zonen med designet inde i, drag rundt
+      boxClick = '';
       boxDragOver = boxDragLeave = boxDrop = '';
-      // Vis design som baggrund (PDF/SVG fungerer ikke som CSS bg, vi bruger billede direkte)
+      boxStyle = `background-color:${tekstilFarve}`;
+      // Position: brug gemt position eller default
+      const savedPos = design.position;
+      const defPos = (zonePct ? getDefaultDesignPosition(m.key, zonePct) : { x: 50, y: 50 });
+      const posX = (savedPos && typeof savedPos.x === 'number') ? savedPos.x : defPos.x;
+      const posY = (savedPos && typeof savedPos.y === 'number') ? savedPos.y : defPos.y;
+      const zoneW = zonePct ? zonePct.wPct : 80;
+      const zoneH = zonePct ? zonePct.hPct : 80;
       const isImage = (design.type === 'image/png' || design.type === 'image/jpeg' || design.type === 'image/svg+xml');
-      if (isImage) {
-        boxStyle = `background-color:${tekstilFarve}; background-image:url('${design.url}'); background-size:contain; background-position:center; background-repeat:no-repeat;`;
-        boxInner = `<div class="design-zone-check">✓</div>`;
-      } else {
-        // PDF — vi kan ikke vise det som bg, vis fil-ikon
-        boxStyle = `background-color:${tekstilFarve};`;
-        boxInner = `
-          <div class="design-zone-pdf">
-            <div class="design-zone-pdf-icon">📄</div>
-            <div class="design-zone-pdf-label">PDF</div>
-          </div>
-          <div class="design-zone-check">✓</div>`;
-      }
+      // Animér nye designs ind (det første render efter upload skal animeres)
+      const animClass = (savedPos ? '' : 'zone-animate-in');
+      const isPdfClass = isImage ? '' : 'is-pdf';
+      const zoneInner = isImage
+        ? `<img class="tryk-design-img" src="${design.url}" alt="${design.filename}" draggable="false">`
+        : `<div style="font-size:24px">📄</div><div>PDF</div>`;
+      boxInner = `
+        <div class="tryk-zone ${animClass} ${isPdfClass}"
+             id="tryk_zone_${i}_${m.key}"
+             style="left:${posX}%;top:${posY}%;width:${zoneW}%;height:${zoneH}%"
+             data-x="${posX}" data-y="${posY}"
+             onmousedown="handleZoneDragStart(event, ${i}, '${m.key}')">
+          ${zoneInner}
+        </div>
+        <div class="design-zone-check">✓</div>`;
       deactivateBtn = `<button class="design-zone-remove" onclick="removeDesignFromPos(${i}, '${m.key}', event)" title="Fjern design">×</button>`;
     }
 
@@ -4192,6 +4414,7 @@ function buildLineTrykSection(i, gl) {
       <div class="design-zone ${hasSizeControl ? 'has-size-control' : ''} ${isActive ? 'active' : ''}">
         <div class="design-zone-label">${m.short}</div>
         <div class="design-zone-box ${m.type} ${isActive ? 'active' : ''} ${design ? 'has-design' : ''}"
+             id="design_box_${i}_${m.key}"
              style="${boxStyle}"
              title="${m.title}${currentDim ? ' (max '+currentDim+')' : ''}"
              ${boxClick} ${boxDragOver} ${boxDragLeave} ${boxDrop}>
