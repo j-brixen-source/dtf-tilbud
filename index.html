@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.071
+  Version: 1.072
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.071  (2026-04-29)  ⭐ Aktuel — Design-zoner: stabil højde + +25% størrelse
+  v1.072  (2026-04-29)  ⭐ Aktuel — Fysiske trykmål (cm) + opløsnings-info
+          • Ny tabel i Indstillinger: bredde × højde i cm pr. trykkategori
+            - Lille: 10×10 cm (default)
+            - Stort: 26×35 cm (default)
+            - Ekstra stort: tomt (du sætter selv)
+            - Ærmer: 8×8 cm (default)
+          • 8 nye persisterede settings: tryk_w_small/h_small/w_large/h_large/
+            w_xl/h_xl/w_sleeve/h_sleeve
+          • Vises som badge under aktive design-zone-felter: "10 × 10 cm"
+          • Dropdown'en under aktive front/back opdateres dynamisk:
+            "Lille (10×10 cm)" osv.
+          • Forberedelse til v1.073 (upload med opløsnings-validering)
+
+  v1.071  (2026-04-29) — Design-zoner: stabil højde + +25% størrelse
           • Front/back: 80×100 → 100×125 px
           • Sleeves: 40×40 → 50×50 px
           • Felter har nu fast min-højde (195px) så de IKKE hopper op/ned
@@ -229,7 +242,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.071 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.072 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -529,9 +542,9 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.071: bevar fast min-højde så felter ikke hopper op/ned ved aktivering.
-       Plads til: label (~14px) + box (125px) + price (14px) + size-select (~24px) + gaps */
-    min-height: 195px;
+    /* v1.072: bevar fast min-højde så felter ikke hopper op/ned ved aktivering.
+       Plads til: label (~14px) + box (125px) + price (14px) + dim (14px) + size-select (~24px) + gaps */
+    min-height: 209px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -613,6 +626,14 @@
     margin-top: 4px;
     height: 14px;     /* bevar layout-højde også når tom */
     line-height: 14px;
+  }
+  /* v1.072: Cm-mål badge under aktive felter */
+  .design-zone-dim {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+    height: 12px;
+    line-height: 12px;
   }
   .design-zone-size {
     margin-top: 4px;
@@ -1207,7 +1228,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.071 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.072 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -1307,7 +1328,7 @@
         <!-- Print-priser -->
         <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">
           Trykpriser pr. position
-          <span style="font-weight:400;color:var(--muted)">· Lille ≤10×10 cm · Stort ≤26×35 cm · XL >26×35 cm</span>
+          <span style="font-weight:400;color:var(--muted)" id="trykprisLabel">· Lille ≤10×10 cm · Stort ≤26×35 cm · XL >26×35 cm</span>
         </div>
         <table class="pricetbl" style="margin-bottom:18px">
           <thead><tr><th>Position</th><th>Lille</th><th>Stort</th><th>Ekstra stort</th></tr></thead>
@@ -1326,6 +1347,29 @@
             <tr><td>Højre ærme</td>
               <td><input type="number" id="p_sleeve_r_small" value="25" min="0" style="width:65px" onchange="persistInput(this)"></td>
               <td colspan="2" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td></tr>
+          </tbody>
+        </table>
+
+        <!-- v1.072: Fysiske trykmål pr. kategori -->
+        <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">
+          Fysiske trykmål (cm)
+          <span style="font-weight:400;color:var(--muted)">· Vises på design-zoner og bruges til opløsnings-validering</span>
+        </div>
+        <table class="pricetbl" style="margin-bottom:18px">
+          <thead><tr><th>Kategori</th><th>Bredde (cm)</th><th>Højde (cm)</th></tr></thead>
+          <tbody>
+            <tr><td>Lille</td>
+              <td><input type="number" id="tryk_w_small" value="10" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
+              <td><input type="number" id="tryk_h_small" value="10" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
+            <tr><td>Stort</td>
+              <td><input type="number" id="tryk_w_large" value="26" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
+              <td><input type="number" id="tryk_h_large" value="35" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
+            <tr><td>Ekstra stort</td>
+              <td><input type="number" id="tryk_w_xl" value="" min="0" step="0.5" placeholder="fx 40" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
+              <td><input type="number" id="tryk_h_xl" value="" min="0" step="0.5" placeholder="fx 50" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
+            <tr><td>Ærmer</td>
+              <td><input type="number" id="tryk_w_sleeve" value="8" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
+              <td><input type="number" id="tryk_h_sleeve" value="8" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
           </tbody>
         </table>
 
@@ -1825,6 +1869,10 @@ const PERSISTED_SETTING_IDS = [
   'p_front_small', 'p_front_large', 'p_front_xl',
   'p_back_small',  'p_back_large',  'p_back_xl',
   'p_sleeve_l_small', 'p_sleeve_r_small',
+  'tryk_w_small', 'tryk_h_small',
+  'tryk_w_large', 'tryk_h_large',
+  'tryk_w_xl',    'tryk_h_xl',
+  'tryk_w_sleeve','tryk_h_sleeve',
   'setup_fee', 'order_handling_fee', 'disc_per_unit', 'disc_max',
   'eur_dkk'
 ];
@@ -1913,6 +1961,7 @@ async function loadSettingsFromSupabase() {
 
     captureSettingsSnapshot();
     markSettingsDirty(false);
+    if (typeof updateAllTrykLabels === 'function') updateAllTrykLabels();  // v1.072
     if (typeof recalc === 'function') recalc();
     dbLog('Settings indlæst fra Supabase', Object.keys(map).length + ' felter');
     return true;
@@ -1921,6 +1970,7 @@ async function loadSettingsFromSupabase() {
     // Fallback: brug localStorage
     loadPersistedSettings();
     captureSettingsSnapshot();
+    if (typeof updateAllTrykLabels === 'function') updateAllTrykLabels();  // v1.072
     if (typeof recalc === 'function') recalc();
     return false;
   }
@@ -3571,10 +3621,8 @@ function setLinePosSize(lineIdx, pos, size) {
   const gl = garmentLinesData[lineIdx]; if(!gl) return;
   if(!gl.positions || !gl.positions[pos]) return;
   gl.positions[pos].size = size;
-  // Opdatér pris-badge i DOM direkte uden fuld re-render
-  const pr = getPrintPrice(pos, size).price;
-  const el = document.getElementById(`tryk_price_${lineIdx}_${pos}`);
-  if(el) el.textContent = fmtNum(pr) + ' kr/stk';
+  // v1.072: re-render for at opdatere både pris og cm-badge
+  renderGarmentLines();
   recalc();
 }
 
@@ -3583,6 +3631,52 @@ function toggleTrykSection(lineIdx) {
   gl.trykExpanded = !gl.trykExpanded;
   const sec = document.getElementById(`tryk_section_${lineIdx}`);
   if(sec) sec.classList.toggle('expanded', !!gl.trykExpanded);
+}
+
+// v1.072: Hent fysiske mål (cm) for en trykkategori. Returnerer {w, h} eller null hvis ikke sat.
+// Sleeves bruger samme mål uanset position. Front/back deler samme mål pr. størrelse.
+function getTrykDimensions(pos, size) {
+  const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
+  if (isSleeve) {
+    const w = parseFloat(document.getElementById('tryk_w_sleeve')?.value);
+    const h = parseFloat(document.getElementById('tryk_h_sleeve')?.value);
+    return (w && h) ? {w, h} : null;
+  }
+  // front/back bruger samme mål pr. kategori (small/large/xl)
+  const sel = size || 'large';
+  const w = parseFloat(document.getElementById(`tryk_w_${sel}`)?.value);
+  const h = parseFloat(document.getElementById(`tryk_h_${sel}`)?.value);
+  return (w && h) ? {w, h} : null;
+}
+
+// Formatér mål som "10 × 10 cm" eller returnér null hvis intet er sat
+function formatTrykDimensions(dim) {
+  if (!dim || !dim.w || !dim.h) return null;
+  const fmt = (n) => Number.isInteger(n) ? String(n) : String(n).replace('.', ',');
+  return `${fmt(dim.w)} × ${fmt(dim.h)} cm`;
+}
+
+// v1.072: Opdatér label på trykprisliste-overskrift + dropdown-options + design-zone-badges
+// Kaldes når et tryk-mål-felt ændres
+function updateAllTrykLabels() {
+  const small = formatTrykDimensions(getTrykDimensions('front', 'small'));
+  const large = formatTrykDimensions(getTrykDimensions('front', 'large'));
+  const xl    = formatTrykDimensions(getTrykDimensions('front', 'xl'));
+
+  // Opdater label-tekst over trykpris-tabellen
+  const label = document.getElementById('trykprisLabel');
+  if (label) {
+    const parts = [];
+    if (small) parts.push(`Lille ≤${small}`);
+    if (large) parts.push(`Stort ≤${large}`);
+    if (xl)    parts.push(`Ekstra stort ≤${xl}`);
+    label.textContent = parts.length ? '· ' + parts.join(' · ') : '';
+  }
+
+  // Re-render alle tøjlinjer så design-zone-badges + dropdown-options opdateres
+  if (typeof renderGarmentLines === 'function' && typeof garmentLinesData !== 'undefined') {
+    renderGarmentLines();
+  }
 }
 
 function getPrintPrice(pos, size) {
@@ -3650,27 +3744,38 @@ function buildLineTrykSection(i, gl) {
     const size = pp.size || ((m.type==='sleeve') ? 'small' : 'large');
     const priceInfo = getPrintPrice(m.key, size);
     const hasSizeControl = (m.type !== 'sleeve');
+    // v1.072: dynamiske cm-mål til både dropdown-options og badge under feltet
+    const dimSmall = formatTrykDimensions(getTrykDimensions(m.key, 'small'));
+    const dimLarge = formatTrykDimensions(getTrykDimensions(m.key, 'large'));
+    const dimXl    = formatTrykDimensions(getTrykDimensions(m.key, 'xl'));
+    const currentDim = formatTrykDimensions(getTrykDimensions(m.key, size));
+    const optSmall = `Lille${dimSmall ? ' (≤'+dimSmall+')' : ''}`;
+    const optLarge = `Stort${dimLarge ? ' (≤'+dimLarge+')' : ''}`;
+    const optXl    = `Ekstra stort${dimXl ? ' (≤'+dimXl+')' : ''}`;
     const sizeSelect = hasSizeControl ? `
       <div class="design-zone-size" onclick="event.stopPropagation()">
         <select onchange="setLinePosSize(${i}, '${m.key}', this.value)">
-          <option value="small" ${size==='small' ? 'selected':''}>Lille (≤10×10 cm)</option>
-          <option value="large" ${size==='large' ? 'selected':''}>Stort (≤26×35 cm)</option>
-          <option value="xl"    ${size==='xl'    ? 'selected':''}>Ekstra stort</option>
+          <option value="small" ${size==='small' ? 'selected':''}>${optSmall}</option>
+          <option value="large" ${size==='large' ? 'selected':''}>${optLarge}</option>
+          <option value="xl"    ${size==='xl'    ? 'selected':''}>${optXl}</option>
         </select>
       </div>` : '';
     const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
+    // Badge med cm-mål under aktive felter (vises kun hvis aktiv + mål er sat)
+    const dimBadge = (isActive && currentDim) ? `<div class="design-zone-dim">${currentDim}</div>` : '';
     return `
       <div class="design-zone ${hasSizeControl ? 'has-size-control' : ''} ${isActive ? 'active' : ''}">
         <div class="design-zone-label">${m.short}</div>
         <div class="design-zone-box ${m.type} ${isActive ? 'active' : ''}"
              style="background-color:${tekstilFarve}"
-             title="${m.title} — klik for at ${isActive ? 'fjerne' : 'aktivere'}"
+             title="${m.title} — klik for at ${isActive ? 'fjerne' : 'aktivere'}${currentDim ? ' (max '+currentDim+')' : ''}"
              onclick="toggleLinePos(${i}, '${m.key}')">
           <div class="design-zone-plus">+</div>
           <div class="design-zone-drop">${dropZoneText}</div>
           <div class="design-zone-check">✓</div>
         </div>
         <div class="design-zone-price" id="tryk_price_${i}_${m.key}">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
+        ${dimBadge}
         ${sizeSelect}
       </div>`;
   }).join('');
@@ -5887,6 +5992,7 @@ function åbnTilbud(id) {
 
 // Init
 loadPersistedSettings();   // v1.065: localStorage-fallback før recalc
+updateAllTrykLabels();     // v1.072: opdatér label-tekst på trykpris-tabel
 renderGarmentLines();
 recalc();
 // initSupabase() kaldes inde fra checkAuthAndStart() — vi viser login-skærm først
