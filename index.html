@@ -4,12 +4,29 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.074
+  Version: 1.076
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.074  (2026-04-29)  ⭐ Aktuel — Tydelig størrelses-label på aktive design-zoner
+  v1.076  (2026-04-29)  ⭐ Aktuel — Design-upload (basal funktionalitet)
+          • Klik på aktivt felt → fil-vælger åbner
+          • Drag-and-drop fra fil-explorer → uploader filen
+          • Validering: PNG/JPG/PDF/SVG, max 25 MB
+          • Upload til Supabase Storage 'tilbud-designs/'
+          • Designet vises som baggrund i feltet (centreret, contain-fit)
+          • ✕-knap til at fjerne uploaded design
+          • Filinfo vises: filnavn + DPI ved valgt cm-størrelse
+          • DPI-indikator: gul <200, orange 200-300, grøn ≥300
+          • gl.designs[pos] = {url, filename, size, type, width, height}
+          • Forberedelse til v1.077 (stor modal med drag/resize)
+
+  v1.075  (2026-04-29) — Rul label tilbage til v1.073-stil (stabil)
+          • v1.074-aktiv-label gjorde felterne ustabile (hopper ved klik)
+          • Tilbage til simpel: lille "FORSIDE" label + cm-badge under
+          • Forberedelse til upload-funktionalitet i v1.076
+
+  v1.074  (2026-04-29) — Tydelig størrelses-label på aktive design-zoner
           • Aktive felter viser nu størrelse + cm-mål TYDELIGT øverst,
             erstatter den lille "FORSIDE"-label
           • Eksempel: "Forside · Stort 26 × 35 cm" (i stedet for bare "FORSIDE")
@@ -258,7 +275,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.074 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.076 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -558,10 +575,8 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.074: bevar fast min-højde så felter ikke hopper op/ned ved aktivering.
-       Aktiv: stor label (~34px) + box (125px) + price (14px) + size-select (~24px) + gaps
-       Inaktiv: lille label (~14px) + box (125px) + price (14px) + size-select (~24px hidden) */
-    min-height: 215px;
+    /* v1.076: stabil min-højde — plads til label + box + price + dim + filename + dpi-badge + size-select */
+    min-height: 245px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -570,30 +585,6 @@
     margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-weight: 500;
-  }
-  /* v1.074: Stor label på aktive felter — viser position + størrelse + cm */
-  .design-zone-label-active {
-    font-size: 13px;
-    color: #185FA5;
-    font-weight: 600;
-    margin-bottom: 6px;
-    text-align: center;
-    line-height: 1.3;
-    min-height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .design-zone-label-active .dz-pos {
-    font-weight: 600;
-  }
-  .design-zone-label-active .dz-sep {
-    margin: 0 6px;
-    color: var(--muted);
-    font-weight: 400;
-  }
-  .design-zone-label-active .dz-size {
     font-weight: 500;
   }
   .design-zone-box {
@@ -676,6 +667,109 @@
     height: 12px;
     line-height: 12px;
   }
+  /* v1.076: Drag-and-drop highlight */
+  .design-zone-box.drag-over {
+    border: 2px solid #185FA5 !important;
+    background-color: #e8f1fa !important;
+    box-shadow: 0 0 0 4px rgba(24, 95, 165, 0.15);
+  }
+  /* v1.076: Cursor på aktive felter */
+  .design-zone-box.active:not(.has-design) { cursor: pointer; }
+  .design-zone-box.has-design { cursor: default; opacity: 1 !important; }
+  /* v1.076: Skjul drop-text når feltet IKKE er aktivt eller har design */
+  .design-zone-box:not(.active) .design-zone-drop,
+  .design-zone-box.has-design .design-zone-drop { display: none; }
+  /* v1.076: Vis drop-text på aktive uden design (overskriver gammel kun-active-regel) */
+  .design-zone-box.active:not(.has-design) .design-zone-drop {
+    position: absolute;
+    inset: 16px 18px;
+    border: 2px dashed rgba(255,255,255,0.65);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: rgba(255,255,255,0.85);
+    text-align: center;
+    pointer-events: none;
+  }
+  .design-zone-box.sleeve.active:not(.has-design) .design-zone-drop {
+    inset: 5px 6px;
+    font-size: 8px;
+    border-width: 1.5px;
+  }
+  /* v1.076: Deaktivér-knap (X i hjørne) på aktive felter UDEN design */
+  .design-zone-deactivate {
+    position: absolute;
+    top: -6px; left: -6px;
+    width: 18px; height: 18px;
+    background: #999;
+    border: 2px solid white;
+    border-radius: 50%;
+    color: white;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 5;
+    transition: background 0.12s;
+  }
+  .design-zone-deactivate:hover { background: #d32f2f; }
+  /* v1.076: Fjern-knap på felter MED design */
+  .design-zone-remove {
+    position: absolute;
+    top: -6px; left: -6px;
+    width: 20px; height: 20px;
+    background: rgba(0,0,0,0.6);
+    border: 2px solid white;
+    border-radius: 50%;
+    color: white;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 5;
+    transition: background 0.12s;
+  }
+  .design-zone-remove:hover { background: #d32f2f; }
+  /* v1.076: PDF-fallback visning */
+  .design-zone-pdf {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.85);
+    pointer-events: none;
+  }
+  .design-zone-pdf-icon { font-size: 32px; }
+  .design-zone-box.sleeve .design-zone-pdf-icon { font-size: 18px; }
+  .design-zone-pdf-label { font-size: 11px; font-weight: 600; margin-top: 2px; }
+  .design-zone-box.sleeve .design-zone-pdf-label { font-size: 8px; }
+  /* v1.076: Filinfo under feltet (filnavn + DPI-badge) */
+  .design-zone-fileinfo {
+    margin-top: 4px;
+    text-align: center;
+    width: 100%;
+  }
+  .design-zone-filename {
+    font-size: 9px;
+    color: var(--muted);
+    line-height: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 110px;
+  }
+  .design-zone-dpi {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-top: 2px;
+    line-height: 12px;
+  }
+  .design-zone-dpi.dpi-green  { background: #d1f7d6; color: #185b1f; }
+  .design-zone-dpi.dpi-orange { background: #ffe6cc; color: #8a3a00; }
+  .design-zone-dpi.dpi-yellow { background: #fff5b8; color: #8a6800; }
   /* v1.073: Read-only mål-span i kombineret pris-tabel (bagside, h. ærme) */
   .dim-readonly {
     display: inline-block;
@@ -1285,7 +1379,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.074 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.076 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -1858,6 +1952,11 @@ function defaultGarmentLine() {
       back:     {active:false, size:'large'},
       sleeve_l: {active:false, size:'small'},
       sleeve_r: {active:false, size:'small'}
+    },
+    // v1.076: Uploadet kunde-design pr. position. null hvis intet uploadet.
+    // Object: {url, filename, size, type, width, height, uploadedAt}
+    designs: {
+      front: null, back: null, sleeve_l: null, sleeve_r: null
     },
     trykExpanded: true
   };
@@ -3706,6 +3805,181 @@ function setLinePosSize(lineIdx, pos, size) {
   recalc();
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// v1.076: Design-upload (basal funktionalitet)
+// ──────────────────────────────────────────────────────────────────────
+
+const ALLOWED_DESIGN_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'application/pdf'];
+const MAX_DESIGN_BYTES = 25 * 1024 * 1024; // 25 MB
+
+// Trigger fil-vælger ved klik på et aktivt felt (uden uploaded design endnu)
+function triggerDesignUpload(lineIdx, pos) {
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  if (!gl.positions?.[pos]?.active) return;  // sikkerhed
+  if (gl.designs?.[pos]) return;             // har allerede design
+
+  // Lav et midlertidigt file-input
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = ALLOWED_DESIGN_TYPES.join(',');
+  input.style.display = 'none';
+  input.onchange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleDesignFile(lineIdx, pos, file);
+  };
+  document.body.appendChild(input);
+  input.click();
+  // Cleanup efter 60 sek (uanset om bruger valgte fil eller annullerede)
+  setTimeout(() => input.remove(), 60000);
+}
+
+// Drag-and-drop handlers (sættes på selve .design-zone-box)
+function handleDesignDragOver(e, lineIdx, pos) {
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  if (!gl.positions?.[pos]?.active) return;
+  if (gl.designs?.[pos]) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function handleDesignDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function handleDesignDrop(e, lineIdx, pos) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  if (!gl.positions?.[pos]?.active) return;
+  if (gl.designs?.[pos]) return;
+  const file = e.dataTransfer.files?.[0];
+  if (file) handleDesignFile(lineIdx, pos, file);
+}
+
+// Hovedfunktion: validér + upload + persistér design
+async function handleDesignFile(lineIdx, pos, file) {
+  // Validering
+  if (!ALLOWED_DESIGN_TYPES.includes(file.type)) {
+    showToast(`❌ Filtype ikke understøttet: ${file.type || 'ukendt'}. Tillader PNG, JPG, PDF, SVG.`, 'error', 5000);
+    return;
+  }
+  if (file.size > MAX_DESIGN_BYTES) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    showToast(`❌ Fil er for stor: ${mb} MB (max 25 MB)`, 'error', 5000);
+    return;
+  }
+
+  // Hent billede-dimensioner (kun for PNG/JPG; SVG/PDF får 0,0)
+  let width = 0, height = 0;
+  if (file.type === 'image/png' || file.type === 'image/jpeg') {
+    try {
+      const dim = await getImageDimensions(file);
+      width = dim.width;
+      height = dim.height;
+    } catch (e) {
+      dbLog('getImageDimensions fejlede', e.message);
+    }
+  }
+
+  // Upload til Supabase
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    showToast('❌ Supabase ikke tilgængelig — prøv igen', 'error');
+    return;
+  }
+
+  showToast(`📤 Uploader ${file.name}...`, 'info', 2000);
+
+  try {
+    // Sti: tilbud-designs/quote-{tilbudId|temp}/line-{lineIdx}_{pos}_{timestamp}.ext
+    const tilbudId = (typeof currentTilbudId !== 'undefined' && currentTilbudId) ? currentTilbudId : 'temp';
+    const ext = file.name.split('.').pop().toLowerCase();
+    const ts = Date.now();
+    const path = `quote-${tilbudId}/line-${lineIdx}_${pos}_${ts}.${ext}`;
+
+    const { data: upData, error: upErr } = await sb.storage
+      .from('tilbud-designs')
+      .upload(path, file, { upsert: false, contentType: file.type });
+    if (upErr) throw upErr;
+
+    const { data: urlData } = sb.storage.from('tilbud-designs').getPublicUrl(path);
+    const url = urlData.publicUrl;
+
+    // Persistér på garment line
+    const gl = garmentLinesData[lineIdx];
+    if (!gl.designs) gl.designs = { front: null, back: null, sleeve_l: null, sleeve_r: null };
+    gl.designs[pos] = {
+      url,
+      path,            // til at slette senere
+      filename: file.name,
+      size: file.size,
+      type: file.type,
+      width,
+      height,
+      uploadedAt: new Date().toISOString()
+    };
+
+    showToast(`✓ Design uploadet: ${file.name}`, 'success');
+    renderGarmentLines();
+  } catch (err) {
+    dbLog('Design-upload fejlede', err.message);
+    showToast(`❌ Upload fejlede: ${err.message}`, 'error', 6000);
+  }
+}
+
+// Hent billede-dimensioner via FileReader + Image
+function getImageDimensions(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => reject(new Error('Kunne ikke læse billede'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Kunne ikke læse fil'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Slet uploaded design fra et felt (også i Supabase Storage)
+async function removeDesignFromPos(lineIdx, pos, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  const design = gl.designs?.[pos];
+  if (!design) return;
+
+  if (!confirm(`Fjern design "${design.filename}"?`)) return;
+
+  // Slet fra Supabase Storage (best-effort, fejler stille)
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (sb && design.path) {
+    try {
+      await sb.storage.from('tilbud-designs').remove([design.path]);
+    } catch (e) {
+      dbLog('Slet fra storage fejlede (ignoreret)', e.message);
+    }
+  }
+
+  gl.designs[pos] = null;
+  showToast('Design fjernet', 'info', 2000);
+  renderGarmentLines();
+}
+
+// Beregn DPI ved valgt fysisk størrelse + returnér klassifikation
+// (gul <200, orange 200-299, grøn ≥300)
+function getDesignDpi(design, dimCm) {
+  if (!design || !design.width || !dimCm || !dimCm.w) return null;
+  // Brug bredden som reference (designet fylder hele bredden af tryk-zonen i basal version)
+  // 1 inch = 2.54 cm  →  px / cm * 2.54 = DPI
+  const dpiW = (design.width / dimCm.w) * 2.54;
+  let level = 'green';
+  if (dpiW < 200) level = 'yellow';
+  else if (dpiW < 300) level = 'orange';
+  return { dpi: Math.round(dpiW), level };
+}
+
 function toggleTrykSection(lineIdx) {
   const gl = garmentLinesData[lineIdx]; if(!gl) return;
   gl.trykExpanded = !gl.trykExpanded;
@@ -3853,38 +4127,80 @@ function buildLineTrykSection(i, gl) {
         </select>
       </div>` : '';
     const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
-    // v1.074: Tydelig stor label øverst når aktivt — viser position + størrelse + cm
-    // Sleeves er små felter, så de får en kort version
-    const sizeName = {small: 'Lille', large: 'Stort', xl: 'Ekstra stort'};
-    let labelHtml;
-    if (isActive) {
-      if (m.type === 'sleeve') {
-        // Sleeves er smalle, hold det kort: "V. ærme · 8×8 cm"
-        labelHtml = `<div class="design-zone-label-active">
-          <span><span class="dz-pos">${m.title}</span>${currentDim ? `<span class="dz-sep">·</span><span class="dz-size">${currentDim}</span>` : ''}</span>
-        </div>`;
-      } else {
-        // Front/back: "Forside · Stort 26 × 35 cm"
-        const sz = sizeName[size] || size;
-        labelHtml = `<div class="design-zone-label-active">
-          <span><span class="dz-pos">${m.title}</span><span class="dz-sep">·</span><span class="dz-size">${sz}${currentDim ? ' ' + currentDim : ''}</span></span>
-        </div>`;
-      }
+    // v1.073-stil: lille label øverst + dim-badge under (stabilt layout)
+    const dimBadge = (isActive && currentDim) ? `<div class="design-zone-dim">${currentDim}</div>` : '';
+
+    // v1.076: Tre tilstande på feltet:
+    //   1. Inaktiv → klik = aktivér position
+    //   2. Aktiv + intet design → klik = upload, drag-drop = upload, lille X = deaktivér
+    //   3. Aktiv + design uploadet → vis billede, klik = ingen handling, ✕ = fjern design
+    const design = gl.designs?.[m.key];
+    const dpiInfo = (isActive && design) ? getDesignDpi(design, getTrykDimensions(m.key, size)) : null;
+
+    let boxClick, boxDragOver, boxDragLeave, boxDrop, boxStyle, boxInner, deactivateBtn;
+    if (!isActive) {
+      // Tilstand 1: inaktiv
+      boxClick = `onclick="toggleLinePos(${i}, '${m.key}')"`;
+      boxDragOver = boxDragLeave = boxDrop = '';
+      boxStyle = `background-color:${tekstilFarve}`;
+      boxInner = `
+        <div class="design-zone-plus">+</div>
+        <div class="design-zone-check">✓</div>`;
+      deactivateBtn = '';
+    } else if (!design) {
+      // Tilstand 2: aktiv, intet design — klik = upload, drop = upload
+      boxClick = `onclick="triggerDesignUpload(${i}, '${m.key}')"`;
+      boxDragOver  = `ondragover="handleDesignDragOver(event, ${i}, '${m.key}')"`;
+      boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
+      boxDrop      = `ondrop="handleDesignDrop(event, ${i}, '${m.key}')"`;
+      boxStyle = `background-color:${tekstilFarve}`;
+      boxInner = `
+        <div class="design-zone-drop">${dropZoneText}</div>
+        <div class="design-zone-check">✓</div>`;
+      // Lille deaktivér-knap (X i øverste-venstre hjørne) når aktiv uden design
+      deactivateBtn = `<button class="design-zone-deactivate" onclick="event.stopPropagation(); toggleLinePos(${i}, '${m.key}')" title="Fjern position">×</button>`;
     } else {
-      labelHtml = `<div class="design-zone-label">${m.short}</div>`;
+      // Tilstand 3: aktiv + design uploadet — vis billedet
+      boxClick = '';  // ingen klik-handler — bruger interagerer via fjern-knap
+      boxDragOver = boxDragLeave = boxDrop = '';
+      // Vis design som baggrund (PDF/SVG fungerer ikke som CSS bg, vi bruger billede direkte)
+      const isImage = (design.type === 'image/png' || design.type === 'image/jpeg' || design.type === 'image/svg+xml');
+      if (isImage) {
+        boxStyle = `background-color:${tekstilFarve}; background-image:url('${design.url}'); background-size:contain; background-position:center; background-repeat:no-repeat;`;
+        boxInner = `<div class="design-zone-check">✓</div>`;
+      } else {
+        // PDF — vi kan ikke vise det som bg, vis fil-ikon
+        boxStyle = `background-color:${tekstilFarve};`;
+        boxInner = `
+          <div class="design-zone-pdf">
+            <div class="design-zone-pdf-icon">📄</div>
+            <div class="design-zone-pdf-label">PDF</div>
+          </div>
+          <div class="design-zone-check">✓</div>`;
+      }
+      deactivateBtn = `<button class="design-zone-remove" onclick="removeDesignFromPos(${i}, '${m.key}', event)" title="Fjern design">×</button>`;
     }
+
+    // Filinfo + DPI-badge under feltet (kun når design er uploadet)
+    const fileInfoHtml = (isActive && design) ? `
+      <div class="design-zone-fileinfo">
+        <div class="design-zone-filename" title="${design.filename}">${design.filename.length > 18 ? design.filename.substring(0,15)+'…' : design.filename}</div>
+        ${dpiInfo ? `<div class="design-zone-dpi dpi-${dpiInfo.level}">${dpiInfo.dpi} DPI</div>` : ''}
+      </div>` : '';
+
     return `
       <div class="design-zone ${hasSizeControl ? 'has-size-control' : ''} ${isActive ? 'active' : ''}">
-        ${labelHtml}
-        <div class="design-zone-box ${m.type} ${isActive ? 'active' : ''}"
-             style="background-color:${tekstilFarve}"
-             title="${m.title} — klik for at ${isActive ? 'fjerne' : 'aktivere'}${currentDim ? ' (max '+currentDim+')' : ''}"
-             onclick="toggleLinePos(${i}, '${m.key}')">
-          <div class="design-zone-plus">+</div>
-          <div class="design-zone-drop">${dropZoneText}</div>
-          <div class="design-zone-check">✓</div>
+        <div class="design-zone-label">${m.short}</div>
+        <div class="design-zone-box ${m.type} ${isActive ? 'active' : ''} ${design ? 'has-design' : ''}"
+             style="${boxStyle}"
+             title="${m.title}${currentDim ? ' (max '+currentDim+')' : ''}"
+             ${boxClick} ${boxDragOver} ${boxDragLeave} ${boxDrop}>
+          ${boxInner}
+          ${deactivateBtn}
         </div>
         <div class="design-zone-price" id="tryk_price_${i}_${m.key}">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
+        ${dimBadge}
+        ${fileInfoHtml}
         ${sizeSelect}
       </div>`;
   }).join('');
