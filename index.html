@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.079
+  Version: 1.080
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.079  (2026-04-29)  ⭐ Aktuel — Skaler-ned + warning hvis indhold udenfor
+  v1.080  (2026-04-29)  ⭐ Aktuel — Fix drag-handles + bredde×højde + debug
+          • FIX: Drag-handles virkede baglæns (drag UDAD = mindre, indad =
+            større). Korrekt nu: udad = større, indad = mindre.
+          • Bredde × højde i pixels vises ved siden af DPI-badge
+          • Debug-output i log: alfa-analyse-resultater + warning-checks
+            (åbn Indstillinger → Debug log for at se det)
+          • Ingen ændringer i warning-logik — det fungerer som forventet,
+            men du kan nu se hvorfor warning udløses via debug-loggen
+
+  v1.079  (2026-04-29) — Skaler-ned + warning hvis indhold udenfor
           • Tryk-zonen kan nu trækkes UD OVER felt-boksen (ingen grænse)
           • Skaler-ned via drag-handles på 4 hjørner (kan ikke gøres større)
           • Slider under feltet (30-100% af max-størrelse)
@@ -306,7 +315,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.079 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.080 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1596,7 +1605,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.079 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.080 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4130,9 +4139,17 @@ async function handleDesignFile(lineIdx, pos, file) {
       try {
         contentBounds = await analyzeAlphaContent(file);
         hasTransparency = (contentBounds !== null);
+        if (contentBounds) {
+          dbLog('Alfa-analyse: content-bounds (% af billedet)',
+            `${contentBounds.minX.toFixed(0)},${contentBounds.minY.toFixed(0)} – ${contentBounds.maxX.toFixed(0)},${contentBounds.maxY.toFixed(0)}`);
+        } else {
+          dbLog('Alfa-analyse', 'Ingen content-bounds — billedet har ingen transparens eller kun transparens');
+        }
       } catch (err) {
         dbLog('Alfa-analyse fejlede (ignoreret)', err.message);
       }
+    } else {
+      dbLog('Alfa-analyse skippet', `${file.type} har ingen alfa-kanal`);
     }
 
     // Persistér på garment line
@@ -4336,18 +4353,22 @@ function isDesignContentOutsideBox(design) {
   }
   // For JPG og PDF: alt udenfor = warning (ingen alfa-info)
   if (!design.contentBounds) {
-    // contentBounds null betyder ingen alfa eller PDF — alt indhold er solid
     return true;
   }
   // For PNG/SVG: check om content-bounding-box (i % af billedet) krydser kanten
-  // Beregn content-grænser i procent af felt-boksen
+  // contentBounds er i % af billedet; vi mapper til % af felt-boksen
   const cb = design.contentBounds;
   const contentLeftPct   = zoneLeft + (cb.minX / 100) * zoneW;
   const contentTopPct    = zoneTop  + (cb.minY / 100) * zoneH;
   const contentRightPct  = zoneLeft + (cb.maxX / 100) * zoneW;
   const contentBottomPct = zoneTop  + (cb.maxY / 100) * zoneH;
-  return (contentLeftPct < 0 || contentTopPct < 0 ||
-          contentRightPct > 100 || contentBottomPct > 100);
+  const isOutside = (contentLeftPct < 0 || contentTopPct < 0 ||
+                     contentRightPct > 100 || contentBottomPct > 100);
+  // v1.080: Debug-output
+  if (typeof dbLog === 'function') {
+    dbLog(`Warning-check`, `pos=(${pos.x.toFixed(1)},${pos.y.toFixed(1)}) zone=${zoneW.toFixed(1)}×${zoneH.toFixed(1)} cb=(${cb.minX.toFixed(0)},${cb.minY.toFixed(0)}-${cb.maxX.toFixed(0)},${cb.maxY.toFixed(0)}) contentArea=(${contentLeftPct.toFixed(1)},${contentTopPct.toFixed(1)}-${contentRightPct.toFixed(1)},${contentBottomPct.toFixed(1)}) outside=${isOutside}`);
+  }
+  return isOutside;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -4409,19 +4430,19 @@ function handleZoneResizeMove(e) {
   const { lineIdx, pos, startMouseX, startMouseY, startScale, boxW } = _zoneResizeState;
   const gl = garmentLinesData[lineIdx]; if (!gl) return;
   const design = gl.designs?.[pos]; if (!design) return;
-  // Vi tillader kun at gøre MINDRE — drag inad → scale ned
-  // Brug delta i pixels og konvertér til procent-ændring
+  // v1.080: Korrekt drag-retning. Drag UDAD (væk fra centrum) = STØRRE.
+  // Top-left:     UDAD = up-left   (dx<0, dy<0) →  delta = -(dx + dy)
+  // Top-right:    UDAD = up-right  (dx>0, dy<0) →  delta = (dx - dy)
+  // Bottom-left:  UDAD = down-left (dx<0, dy>0) →  delta = (dy - dx)
+  // Bottom-right: UDAD = down-right(dx>0, dy>0) →  delta = (dx + dy)
   const dx = e.clientX - startMouseX;
   const dy = e.clientY - startMouseY;
-  // Når drag-bevægelse er "indad" på det aktuelle hjørne, skaler ned
   const corner = _zoneResizeState.corner;
   let delta = 0;
-  if (corner === 'tlh') delta = -(dx + dy);  // top-left: drag ned-højre = mindre
-  if (corner === 'trh') delta = -(dy - dx);  // top-right: drag ned-venstre
-  if (corner === 'blh') delta = -(dx - dy);  // bottom-left
-  if (corner === 'brh') delta = (dx + dy);   // bottom-right: drag op-venstre = mindre. Faktisk omvendt
-  // Korrektion: Den naive geometri er at brh dragget ud-højre = større, ind-venstre = mindre
-  if (corner === 'brh') delta = -(dx + dy);
+  if (corner === 'tlh') delta = -(dx + dy);
+  if (corner === 'trh') delta =  (dx - dy);
+  if (corner === 'blh') delta =  (dy - dx);
+  if (corner === 'brh') delta =  (dx + dy);
   // Konvertér delta-pixels til procent (delta / boxW * 100)
   const deltaPct = (delta / boxW) * 100;
   let newScale = startScale + deltaPct;
@@ -4436,6 +4457,8 @@ function handleZoneResizeMove(e) {
     const h = (baseH * newScale) / 100;
     zone.style.width  = w + '%';
     zone.style.height = h + '%';
+    design.zoneWidthPct = w;
+    design.zoneHeightPct = h;
   }
   // Opdater slider-værdi
   const slider = document.getElementById(`scale_slider_${lineIdx}_${pos}`);
@@ -4796,10 +4819,17 @@ function buildLineTrykSection(i, gl) {
     }
 
     // Filinfo + DPI-badge under feltet (kun når design er uploadet)
+    // v1.080: Vis også bredde × højde i pixels
+    const dimText = (design && design.width && design.height)
+      ? `${design.width} × ${design.height} px`
+      : '';
     const fileInfoHtml = (isActive && design) ? `
       <div class="design-zone-fileinfo">
         <div class="design-zone-filename" title="${design.filename}">${design.filename.length > 18 ? design.filename.substring(0,15)+'…' : design.filename}</div>
-        ${dpiInfo ? `<div class="design-zone-dpi dpi-${dpiInfo.level}">${dpiInfo.dpi} DPI</div>` : ''}
+        <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap">
+          ${dpiInfo ? `<div class="design-zone-dpi dpi-${dpiInfo.level}">${dpiInfo.dpi} DPI</div>` : ''}
+          ${dimText ? `<div style="font-size:9px;color:var(--muted)">${dimText}</div>` : ''}
+        </div>
       </div>` : '';
 
     // v1.079: Skala-slider under feltet (kun når design uploadet)
