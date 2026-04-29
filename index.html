@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.072
+  Version: 1.073
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.072  (2026-04-29)  ⭐ Aktuel — Fysiske trykmål (cm) + opløsnings-info
+  v1.073  (2026-04-29)  ⭐ Aktuel — Sammenflet trykmål + trykpris i én tabel
+          • De to separate tabeller fra v1.072 er flettet sammen til én
+          • Hver position-række viser både cm-mål (b×h) og pris pr. størrelse
+          • Forside/bagside deler samme cm-mål: input på forside-rækken,
+            bagside viser samme værdi som plain text (read-only)
+          • V/H ærme: input på V-rækken, H-rækken read-only
+          • Mindre konfusion — alt for én position på samme linje
+
+  v1.072  (2026-04-29) — Fysiske trykmål (cm) + opløsnings-info
           • Ny tabel i Indstillinger: bredde × højde i cm pr. trykkategori
             - Lille: 10×10 cm (default)
             - Stort: 26×35 cm (default)
@@ -242,7 +250,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.072 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.073 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -634,6 +642,22 @@
     margin-top: 2px;
     height: 12px;
     line-height: 12px;
+  }
+  /* v1.073: Read-only mål-span i kombineret pris-tabel (bagside, h. ærme) */
+  .dim-readonly {
+    display: inline-block;
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+    padding: 4px 0;
+  }
+  .pricetbl-combo th, .pricetbl-combo td {
+    text-align: center;
+    padding: 6px 4px;
+  }
+  .pricetbl-combo th:first-child, .pricetbl-combo td:first-child {
+    text-align: left;
+    padding-left: 8px;
   }
   .design-zone-size {
     margin-top: 4px;
@@ -1228,7 +1252,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.072 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.073 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -1325,51 +1349,74 @@
           </tbody>
         </table>
 
-        <!-- Print-priser -->
+        <!-- Print-priser + fysiske mål (v1.073: sammenflettet) -->
         <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">
-          Trykpriser pr. position
+          Trykmål og priser pr. position
           <span style="font-weight:400;color:var(--muted)" id="trykprisLabel">· Lille ≤10×10 cm · Stort ≤26×35 cm · XL >26×35 cm</span>
         </div>
-        <table class="pricetbl" style="margin-bottom:18px">
-          <thead><tr><th>Position</th><th>Lille</th><th>Stort</th><th>Ekstra stort</th></tr></thead>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+          Forside og bagside deler samme mål — sæt cm på forside-rækken. Ærmer: sæt cm på V. ærme-rækken.
+        </div>
+        <table class="pricetbl pricetbl-combo" style="margin-bottom:18px">
+          <thead>
+            <tr>
+              <th rowspan="2" style="vertical-align:bottom">Position</th>
+              <th colspan="2">Lille</th>
+              <th colspan="2">Stort</th>
+              <th colspan="2">Ekstra stort</th>
+            </tr>
+            <tr>
+              <th style="font-weight:400;font-size:11px;color:var(--muted)">B × H (cm)</th>
+              <th style="font-weight:400;font-size:11px;color:var(--muted)">Pris (kr)</th>
+              <th style="font-weight:400;font-size:11px;color:var(--muted)">B × H (cm)</th>
+              <th style="font-weight:400;font-size:11px;color:var(--muted)">Pris (kr)</th>
+              <th style="font-weight:400;font-size:11px;color:var(--muted)">B × H (cm)</th>
+              <th style="font-weight:400;font-size:11px;color:var(--muted)">Pris (kr)</th>
+            </tr>
+          </thead>
           <tbody>
             <tr><td>Forside</td>
-              <td><input type="number" id="p_front_small"   value="25" min="0" style="width:65px" onchange="persistInput(this)"></td>
-              <td><input type="number" id="p_front_large"   value="35" min="0" style="width:65px" onchange="persistInput(this)"></td>
-              <td><input type="number" id="p_front_xl"      value="50" min="0" style="width:65px" onchange="persistInput(this)"></td></tr>
+              <td>
+                <input type="number" id="tryk_w_small" value="10" min="0" step="0.5" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+                <span style="color:var(--muted)">×</span>
+                <input type="number" id="tryk_h_small" value="10" min="0" step="0.5" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+              </td>
+              <td><input type="number" id="p_front_small" value="25" min="0" style="width:60px" onchange="persistInput(this)"></td>
+              <td>
+                <input type="number" id="tryk_w_large" value="26" min="0" step="0.5" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+                <span style="color:var(--muted)">×</span>
+                <input type="number" id="tryk_h_large" value="35" min="0" step="0.5" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+              </td>
+              <td><input type="number" id="p_front_large" value="35" min="0" style="width:60px" onchange="persistInput(this)"></td>
+              <td>
+                <input type="number" id="tryk_w_xl" value="" min="0" step="0.5" placeholder="fx 40" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+                <span style="color:var(--muted)">×</span>
+                <input type="number" id="tryk_h_xl" value="" min="0" step="0.5" placeholder="fx 50" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+              </td>
+              <td><input type="number" id="p_front_xl" value="50" min="0" style="width:60px" onchange="persistInput(this)"></td>
+            </tr>
             <tr><td>Bagside</td>
-              <td><input type="number" id="p_back_small"    value="25" min="0" style="width:65px" onchange="persistInput(this)"></td>
-              <td><input type="number" id="p_back_large"    value="35" min="0" style="width:65px" onchange="persistInput(this)"></td>
-              <td><input type="number" id="p_back_xl"       value="50" min="0" style="width:65px" onchange="persistInput(this)"></td></tr>
+              <td><span class="dim-readonly" id="dim_ro_small">10 × 10</span></td>
+              <td><input type="number" id="p_back_small" value="25" min="0" style="width:60px" onchange="persistInput(this)"></td>
+              <td><span class="dim-readonly" id="dim_ro_large">26 × 35</span></td>
+              <td><input type="number" id="p_back_large" value="35" min="0" style="width:60px" onchange="persistInput(this)"></td>
+              <td><span class="dim-readonly" id="dim_ro_xl">—</span></td>
+              <td><input type="number" id="p_back_xl" value="50" min="0" style="width:60px" onchange="persistInput(this)"></td>
+            </tr>
             <tr><td>Venstre ærme</td>
-              <td><input type="number" id="p_sleeve_l_small" value="25" min="0" style="width:65px" onchange="persistInput(this)"></td>
-              <td colspan="2" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td></tr>
+              <td>
+                <input type="number" id="tryk_w_sleeve" value="8" min="0" step="0.5" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+                <span style="color:var(--muted)">×</span>
+                <input type="number" id="tryk_h_sleeve" value="8" min="0" step="0.5" style="width:48px" onchange="persistInput(this); updateAllTrykLabels()">
+              </td>
+              <td><input type="number" id="p_sleeve_l_small" value="25" min="0" style="width:60px" onchange="persistInput(this)"></td>
+              <td colspan="4" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td>
+            </tr>
             <tr><td>Højre ærme</td>
-              <td><input type="number" id="p_sleeve_r_small" value="25" min="0" style="width:65px" onchange="persistInput(this)"></td>
-              <td colspan="2" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td></tr>
-          </tbody>
-        </table>
-
-        <!-- v1.072: Fysiske trykmål pr. kategori -->
-        <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">
-          Fysiske trykmål (cm)
-          <span style="font-weight:400;color:var(--muted)">· Vises på design-zoner og bruges til opløsnings-validering</span>
-        </div>
-        <table class="pricetbl" style="margin-bottom:18px">
-          <thead><tr><th>Kategori</th><th>Bredde (cm)</th><th>Højde (cm)</th></tr></thead>
-          <tbody>
-            <tr><td>Lille</td>
-              <td><input type="number" id="tryk_w_small" value="10" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
-              <td><input type="number" id="tryk_h_small" value="10" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
-            <tr><td>Stort</td>
-              <td><input type="number" id="tryk_w_large" value="26" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
-              <td><input type="number" id="tryk_h_large" value="35" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
-            <tr><td>Ekstra stort</td>
-              <td><input type="number" id="tryk_w_xl" value="" min="0" step="0.5" placeholder="fx 40" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
-              <td><input type="number" id="tryk_h_xl" value="" min="0" step="0.5" placeholder="fx 50" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
-            <tr><td>Ærmer</td>
-              <td><input type="number" id="tryk_w_sleeve" value="8" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td>
-              <td><input type="number" id="tryk_h_sleeve" value="8" min="0" step="0.5" style="width:65px" onchange="persistInput(this); updateAllTrykLabels()"></td></tr>
+              <td><span class="dim-readonly" id="dim_ro_sleeve">8 × 8</span></td>
+              <td><input type="number" id="p_sleeve_r_small" value="25" min="0" style="width:60px" onchange="persistInput(this)"></td>
+              <td colspan="4" style="color:var(--muted);font-size:12px;text-align:center">— altid lille —</td>
+            </tr>
           </tbody>
         </table>
 
@@ -3658,10 +3705,12 @@ function formatTrykDimensions(dim) {
 
 // v1.072: Opdatér label på trykprisliste-overskrift + dropdown-options + design-zone-badges
 // Kaldes når et tryk-mål-felt ændres
+// v1.073: Opdater også read-only spans på bagside + højre-ærme
 function updateAllTrykLabels() {
   const small = formatTrykDimensions(getTrykDimensions('front', 'small'));
   const large = formatTrykDimensions(getTrykDimensions('front', 'large'));
   const xl    = formatTrykDimensions(getTrykDimensions('front', 'xl'));
+  const sleeve = formatTrykDimensions(getTrykDimensions('sleeve_l', 'small'));
 
   // Opdater label-tekst over trykpris-tabellen
   const label = document.getElementById('trykprisLabel');
@@ -3672,6 +3721,16 @@ function updateAllTrykLabels() {
     if (xl)    parts.push(`Ekstra stort ≤${xl}`);
     label.textContent = parts.length ? '· ' + parts.join(' · ') : '';
   }
+
+  // v1.073: Opdater read-only spans (bagside + højre-ærme synker med forside/V-ærme)
+  const dimSmallEl  = document.getElementById('dim_ro_small');
+  const dimLargeEl  = document.getElementById('dim_ro_large');
+  const dimXlEl     = document.getElementById('dim_ro_xl');
+  const dimSleeveEl = document.getElementById('dim_ro_sleeve');
+  if (dimSmallEl)  dimSmallEl.textContent  = small  || '—';
+  if (dimLargeEl)  dimLargeEl.textContent  = large  || '—';
+  if (dimXlEl)     dimXlEl.textContent     = xl     || '—';
+  if (dimSleeveEl) dimSleeveEl.textContent = sleeve || '—';
 
   // Re-render alle tøjlinjer så design-zone-badges + dropdown-options opdateres
   if (typeof renderGarmentLines === 'function' && typeof garmentLinesData !== 'undefined') {
