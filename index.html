@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.089
+  Version: 1.090
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.089  (2026-04-30)  ⭐ Aktuel — ±1 cm-knapper på design-størrelse
+  v1.090  (2026-04-30)  ⭐ Aktuel — Layout-justeringer
+          • Filename + DPI flyttet op lige under feltet (i stedet for under dim)
+          • Pris flyttet ind i dropdown-options sammen med størrelse
+            (fx "Stort 26 × 35 cm · 35 kr/stk")
+          • Pris-linjen under feltet er fjernet
+          • Tryk-størrelse: font op fra 11px → 15-16px (lettere at læse)
+          • ↑/↓-pile på dim: 14×9 → 22×15 (markant lettere at ramme)
+
+  v1.089  (2026-04-30) — ±1 cm-knapper på design-størrelse
           • Dim-tekst under feltet bliver interaktiv når design uploadet:
             "13 × 17 cm" → klik op/ned-pile på bredde og højde
           • Aspect-ratio låst: ændring af bredde justerer højde proportionalt
@@ -386,7 +394,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.089 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.090 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -773,16 +781,17 @@
   }
   /* v1.072: Cm-mål badge under aktive felter */
   /* v1.089: Interaktiv med ↑/↓-knapper på bredde/højde (kun når design uploadet) */
+  /* v1.090: Større font og større pile — lettere at ramme */
   .design-zone-dim {
-    font-size: 11px;
+    font-size: 15px;
     color: var(--muted);
-    margin-top: 4px;
-    min-height: 22px;
+    margin-top: 6px;
+    min-height: 32px;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 4px;
   }
   .design-zone-dim.has-controls {
     color: var(--text);
@@ -791,17 +800,18 @@
   .design-zone-dim .dim-num-group {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 0 2px;
-    border-radius: 3px;
+    gap: 3px;
+    padding: 0 3px;
+    border-radius: 4px;
   }
   .design-zone-dim .dim-num-group:hover {
     background: rgba(0,0,0,0.04);
   }
   .design-zone-dim .dim-num {
-    min-width: 22px;
+    min-width: 32px;
     text-align: right;
     font-variant-numeric: tabular-nums;
+    font-size: 16px;
   }
   .design-zone-dim .dim-arrows {
     display: inline-flex;
@@ -809,8 +819,8 @@
     gap: 0;
   }
   .design-zone-dim .dim-arrow-btn {
-    width: 14px;
-    height: 9px;
+    width: 22px;
+    height: 15px;
     padding: 0;
     margin: 0;
     border: 1px solid var(--border);
@@ -824,11 +834,11 @@
     transition: all 0.1s;
   }
   .design-zone-dim .dim-arrow-btn:first-child {
-    border-radius: 3px 3px 0 0;
+    border-radius: 4px 4px 0 0;
     border-bottom: none;
   }
   .design-zone-dim .dim-arrow-btn:last-child {
-    border-radius: 0 0 3px 3px;
+    border-radius: 0 0 4px 4px;
   }
   .design-zone-dim .dim-arrow-btn:hover {
     background: #f0f4f8;
@@ -843,17 +853,19 @@
     cursor: not-allowed;
   }
   .design-zone-dim .dim-arrow-btn svg {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
   }
   .design-zone-dim .dim-x {
     color: var(--muted);
-    margin: 0 2px;
+    margin: 0 4px;
+    font-size: 14px;
   }
   .design-zone-dim .dim-unit {
     color: var(--muted);
-    margin-left: 4px;
+    margin-left: 6px;
     font-weight: 400;
+    font-size: 14px;
   }
   /* v1.076: Drag-and-drop highlight */
   .design-zone-box.drag-over {
@@ -1714,7 +1726,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.089
+    v1.090
   </div>
 </div>
 
@@ -1807,7 +1819,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.089 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.090 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -5015,9 +5027,13 @@ function buildLineTrykSection(i, gl) {
     const dimLarge = formatTrykDimensions(getTrykDimensions(m.key, 'large'));
     const dimXl    = formatTrykDimensions(getTrykDimensions(m.key, 'xl'));
     const currentDim = formatTrykDimensions(getTrykDimensions(m.key, size));
-    const optSmall = `Lille${dimSmall ? ' (≤'+dimSmall+')' : ''}`;
-    const optLarge = `Stort${dimLarge ? ' (≤'+dimLarge+')' : ''}`;
-    const optXl    = `Ekstra stort${dimXl ? ' (≤'+dimXl+')' : ''}`;
+    // v1.090: Pris pr. størrelse i dropdown-options så pris+størrelse er samme sted
+    const priceSmall = getPrintPrice(m.key, 'small').price;
+    const priceLarge = getPrintPrice(m.key, 'large').price;
+    const priceXl    = getPrintPrice(m.key, 'xl').price;
+    const optSmall = `Lille${dimSmall ? ' '+dimSmall : ''}${priceSmall ? ' · '+fmtNum(priceSmall)+' kr/stk' : ''}`;
+    const optLarge = `Stort${dimLarge ? ' '+dimLarge : ''}${priceLarge ? ' · '+fmtNum(priceLarge)+' kr/stk' : ''}`;
+    const optXl    = `Ekstra stort${dimXl ? ' '+dimXl : ''}${priceXl ? ' · '+fmtNum(priceXl)+' kr/stk' : ''}`;
     const sizeSelect = hasSizeControl ? `
       <div class="design-zone-size" onclick="event.stopPropagation()">
         <select onchange="setLinePosSize(${i}, '${m.key}', this.value)">
@@ -5042,8 +5058,8 @@ function buildLineTrykSection(i, gl) {
       const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
       const isMax = (_designForDim.scalePercent >= 99.5);
       const isMin = (_designForDim.scalePercent <= 30.5);
-      const upArrow = `<svg viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5 5 4 2.5 6.5 5"/></svg>`;
-      const downArrow = `<svg viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5 3 4 5.5 6.5 3"/></svg>`;
+      const upArrow = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 7.5 6 4 9.5 7.5"/></svg>`;
+      const downArrow = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 4.5 6 8 9.5 4.5"/></svg>`;
       dimBadgeHtml = `<div class="design-zone-dim has-controls">
         <span class="dim-num-group">
           <span class="dim-num">${fmt(sw)}</span>
@@ -5235,11 +5251,11 @@ function buildLineTrykSection(i, gl) {
           ${boxInner}
           ${deactivateBtn}
         </div>
-        <div class="design-zone-price" id="tryk_price_${i}_${m.key}">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
-        ${dimBadge}
         ${fileInfoHtml}
+        ${dimBadge}
         ${scaleSliderHtml}
         ${sizeSelect}
+        <div class="design-zone-price" id="tryk_price_${i}_${m.key}" style="display:none">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
       </div>`;
   }).join('');
 
