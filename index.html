@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.101
+  Version: 1.102
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.101  (2026-04-30)  ⭐ Aktuel — PDF-layout pr. linje + farve + mindre mockups
+  v1.102  (2026-04-30)  ⭐ Aktuel — KRITISK FIX: Duplikér deler designs
+          • Bug: Når en tøjlinje blev dupliceret, delte de to linjer
+            samme designs-objekt (shallow copy). Det betød at fjern-design
+            på den ene fjernede også på den anden. Også scale, drag og andre
+            ændringer på én linje påvirkede den anden.
+          • Fix: Deep-copy af designs i duplicateGarmentLine — hvert design
+            (samt position og contentBounds) får sin egen separate reference.
+          • OBS: Hvis et tilbud er åbent med 2 linjer der ALLEREDE deler
+            designs-reference, skal man enten:
+              - Reloade siden + åbne tilbuddet igen (henter friske objekter
+                fra DB), eller
+              - Duplikere på ny (med v1.102's fix)
+
+  v1.101  (2026-04-30) — PDF-layout pr. linje + farve + mindre mockups
           • Tilbud-PDF: TRYK-tabel + TRYKBILLEDER er nu pr. tøjlinje
             (samlet i én "TRYK & TRYKBILLEDER"-sektion, men hver tøjlinje får
             sin egen mini tryk-tabel + mockups direkte under sig)
@@ -495,7 +508,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.101 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.102 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1873,7 +1886,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.101
+    v1.102
   </div>
 </div>
 
@@ -1966,7 +1979,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.101 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.102 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4340,8 +4353,19 @@ function duplicateGarmentLine(i) {
   if(!orig) return;
   // Collapse ALLE linjer incl. original
   garmentLinesData.forEach(gl => gl.trykExpanded = false);
-  // Dyb kopi af linjen — inkl. positions
+  // Dyb kopi af linjen — inkl. positions OG designs
   const origPos = orig.positions || defaultGarmentLine().positions;
+  // v1.102: Deep-copy af designs — ellers deler de to linjer samme designs-objekt
+  // og fjern-design på den ene fjerner også på den anden!
+  const cloneDesign = (d) => {
+    if (!d) return null;
+    return {
+      ...d,
+      position: d.position ? { ...d.position } : null,
+      contentBounds: d.contentBounds ? { ...d.contentBounds } : null
+    };
+  };
+  const origDesigns = orig.designs || {};
   const copy = {
     ...orig,
     sizeQtys: {...(orig.sizeQtys||{})},
@@ -4358,6 +4382,12 @@ function duplicateGarmentLine(i) {
       back:     {active: !!origPos.back?.active,     size: origPos.back?.size     || 'large'},
       sleeve_l: {active: !!origPos.sleeve_l?.active, size: 'small'},
       sleeve_r: {active: !!origPos.sleeve_r?.active, size: 'small'}
+    },
+    designs: {
+      front:    cloneDesign(origDesigns.front),
+      back:     cloneDesign(origDesigns.back),
+      sleeve_l: cloneDesign(origDesigns.sleeve_l),
+      sleeve_r: cloneDesign(origDesigns.sleeve_r)
     },
     trykExpanded: false,
     _duplicated: true,  // Marker som kopi → ekstra opstart
