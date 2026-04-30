@@ -4,12 +4,27 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.109
+  Version: 1.110
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.109  (2026-04-30)  ⭐ Aktuel — Tab-skelet på Indstillinger-siden
+  v1.110  (2026-04-30)  ⭐ Aktuel — Kategori-liste på Tab 2 (read-only)
+          • Tab 2 ("Trykpositioner & Kategorier") viser nu de 10 default-
+            kategorier loaded fra Supabase-tabellen 'produkt_kategorier'
+          • Ny global window._kategorier (cache, fyldes ved first-load)
+          • Ny funktion loadKategorier() — paginerings-fri (max ~10-20 rk)
+          • Ny funktion renderKategorierList() — genererer HTML pr. række
+          • Hver række viser:
+              - Label (fx "T-shirt / Polo")
+              - Position-indicator (fyldte/tomme cirkler for de 4 positioner)
+              - Total antal sizes på tværs af positioner
+              - Detect-keywords (kommadelt liste, max 80 tegn med "...")
+          • Lazy-load: kategorier hentes først når brugeren klikker Tab 2
+          • Read-only i denne version — Rediger/Tilføj/Slet kommer i v1.111
+          • Realtime sync mellem medarbejdere kommer i v1.112
+
+  v1.109  (2026-04-30) — Tab-skelet på Indstillinger-siden
           • Indstillinger-siden refactored til 3 horisontale faner:
             "Generelt" / "Trykpositioner & Kategorier" / "Leverandører"
           • Tab 1 (Generelt): priser, markup, trykmål, setup, rabat
@@ -573,7 +588,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.107 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.110 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -727,6 +742,98 @@
     font-size: 16px;
     font-weight: 500;
     margin-bottom: 8px;
+  }
+
+  /* v1.110: Kategori-liste på Tab 2 */
+  .kat-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding: 0 4px;
+  }
+  .kat-list-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .kat-list-title .kat-count {
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 4px;
+  }
+  .kat-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .kat-row {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .kat-row:last-child { border-bottom: none; }
+  .kat-row:hover { background: var(--bg); }
+  .kat-row-main { flex: 1; min-width: 0; }
+  .kat-row-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .kat-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .kat-positions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .kat-pos-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border2);
+    border: 1px solid var(--border2);
+    transition: background 0.15s;
+  }
+  .kat-pos-dot.active {
+    background: var(--green);
+    border-color: var(--green);
+  }
+  .kat-pos-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-right: 2px;
+  }
+  .kat-keywords {
+    font-style: italic;
+    opacity: 0.85;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .kat-list-empty {
+    padding: 40px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .kat-list-error {
+    padding: 16px 18px;
+    background: var(--red-bg);
+    color: var(--red);
+    font-size: 13px;
+    border-radius: var(--radius-sm);
   }
 
   /* CARDS */
@@ -2098,7 +2205,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.109
+    v1.110
   </div>
 </div>
 
@@ -2191,7 +2298,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.107 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.110 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -2358,13 +2465,28 @@
 
       <!-- ═════ TAB 2: TRYKPOSITIONER & KATEGORIER ═════ -->
       <div class="settings-tab-pane" id="settings-tab-kategorier">
-        <div class="settings-tab-placeholder">
-          <strong>Trykpositioner &amp; Kategorier</strong>
-          Her bygges kategori-administration ud i kommende versioner (v1.110-v1.112).<br>
-          Du vil kunne tilføje, redigere og slette produktkategorier — fx T-shirt, Hoodie, Bukser — og pr. kategori definere hvilke tryk-positioner der er tilladt + hvilke størrelser der findes med tilhørende pris.<br><br>
-          <span style="font-size:12px;opacity:0.7">Datafundament: tabellen <code>produkt_kategorier</code> i Supabase med 10 default-kategorier (oprettet v1.108).</span>
+
+        <div class="kat-list-header">
+          <div class="kat-list-title">
+            Produktkategorier<span class="kat-count" id="katListCount"></span>
+          </div>
+          <div style="font-size:11px;color:var(--muted)">
+            Read-only · Rediger/Tilføj kommer i v1.111
+          </div>
         </div>
-      </div>
+
+        <!-- Container hvor renderKategorierList() injicerer rækker -->
+        <div id="katListContainer" class="kat-list">
+          <div class="kat-list-empty">Indlæser kategorier fra Supabase…</div>
+        </div>
+
+        <div style="margin-top:14px;font-size:11px;color:var(--muted);padding:0 4px">
+          Datafundament: tabellen <code>produkt_kategorier</code> i Supabase
+          (oprettet v1.108). Smart-default <code>detectProductCategory()</code>
+          matcher mod <em>detect_keywords</em> + produktnavn + product_type.
+        </div>
+
+      </div><!-- /settings-tab-kategorier -->
 
       <!-- ═════ TAB 3: LEVERANDØRER ═════ -->
       <div class="settings-tab-pane" id="settings-tab-leverandorer">
@@ -2890,6 +3012,111 @@ function switchSettingsTab(tabKey) {
 
   // Persistér valg
   try { sessionStorage.setItem('settings_tab', tabKey); } catch(_) {}
+
+  // v1.110: Lazy-load kategorier ved første åbning af Tab 2
+  if (tabKey === 'kategorier' && !window._kategorier) {
+    loadKategorier();
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.110: Produktkategorier — load fra Supabase + render liste på Tab 2
+// ──────────────────────────────────────────────────────────────────────
+
+// Cache: window._kategorier = array af kategori-objekter, eller null før load
+window._kategorier = null;
+
+async function loadKategorier() {
+  const container = document.getElementById('katListContainer');
+  const countEl = document.getElementById('katListCount');
+  if (!container) return;
+
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    container.innerHTML = '<div class="kat-list-error">Supabase ikke klar — kan ikke hente kategorier. Log ind igen?</div>';
+    return;
+  }
+
+  try {
+    const { data, error } = await sb
+      .from('produkt_kategorier')
+      .select('id, key, label, detect_keywords, positions, sort_order, aktiv')
+      .eq('aktiv', true)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    window._kategorier = data || [];
+    if (countEl) countEl.textContent = ' (' + window._kategorier.length + ')';
+    renderKategorierList();
+    dbLog('Kategorier indlæst', window._kategorier.length + ' rækker');
+  } catch (err) {
+    container.innerHTML = '<div class="kat-list-error">Fejl ved indlæsning: ' + escapeHtml(err.message || String(err)) + '</div>';
+    dbLog('loadKategorier fejlede', err.message);
+  }
+}
+
+function renderKategorierList() {
+  const container = document.getElementById('katListContainer');
+  if (!container) return;
+
+  const list = window._kategorier || [];
+  if (list.length === 0) {
+    container.innerHTML = '<div class="kat-list-empty">Ingen kategorier fundet i Supabase.</div>';
+    return;
+  }
+
+  const posLabels = [
+    { key: 'front',    short: 'F' },
+    { key: 'back',     short: 'B' },
+    { key: 'sleeve_l', short: 'V' },
+    { key: 'sleeve_r', short: 'H' }
+  ];
+
+  const rows = list.map(kat => {
+    const positions = kat.positions || {};
+    let totalSizes = 0;
+    let activeCount = 0;
+
+    // Byg position-dots: små cirkler med F/B/V/H labels
+    const dotsHtml = posLabels.map(p => {
+      const posData = positions[p.key] || {};
+      const enabled = !!posData.enabled;
+      if (enabled) {
+        activeCount++;
+        totalSizes += Array.isArray(posData.sizes) ? posData.sizes.length : 0;
+      }
+      return '<span class="kat-pos-label">' + p.short + '</span>'
+           + '<span class="kat-pos-dot' + (enabled ? ' active' : '') + '" title="' + p.key + (enabled ? ' (aktiv)' : ' (inaktiv)') + '"></span>';
+    }).join('');
+
+    // Keywords som komma-separeret liste, trunkér ved 80 tegn
+    let kw = '';
+    if (Array.isArray(kat.detect_keywords) && kat.detect_keywords.length > 0) {
+      const joined = kat.detect_keywords.join(', ');
+      kw = joined.length > 80 ? joined.slice(0, 80) + '…' : joined;
+    } else {
+      kw = '(ingen keywords)';
+    }
+
+    return ''
+      + '<div class="kat-row" data-key="' + escapeHtml(kat.key) + '">'
+      +   '<div class="kat-row-main">'
+      +     '<div class="kat-row-label">' + escapeHtml(kat.label || kat.key) + '</div>'
+      +     '<div class="kat-row-meta">'
+      +       '<span class="kat-positions">' + dotsHtml + '</span>'
+      +       '<span>' + activeCount + ' position' + (activeCount === 1 ? '' : 'er') + ' aktiv'
+      +         (activeCount > 0 ? ' · ' + totalSizes + ' størrelse' + (totalSizes === 1 ? '' : 'r') + ' i alt' : '')
+      +       '</span>'
+      +       '<span class="kat-keywords" title="' + escapeHtml(Array.isArray(kat.detect_keywords) ? kat.detect_keywords.join(', ') : '') + '">'
+      +         escapeHtml(kw)
+      +       '</span>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+  }).join('');
+
+  container.innerHTML = rows;
 }
 
 // ──────────────────────────────────────────────────────────────────────
