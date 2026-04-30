@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.102
+  Version: 1.103
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.102  (2026-04-30)  ⭐ Aktuel — KRITISK FIX: Duplikér deler designs
+  v1.103  (2026-04-30)  ⭐ Aktuel — Farve-swatch i PDF-tabeller
+          • Tilbud-PDF og ordreseddel-PDF: farve-cellen får nu en lille
+            farvestribe (6mm bred) i højre side med tekstilfarvens hex.
+            Visuelt overblik uden at fylde for meget.
+          • Ny helper hexToRgb til at parse #RRGGBB → [R, G, B] for jsPDF
+          • clothesLines indeholder nu også farveHex-feltet
+          • Ordreseddel bygger parallelt farveHexByRow array under prodRows
+
+  v1.102  (2026-04-30) — KRITISK FIX: Duplikér deler designs
           • Bug: Når en tøjlinje blev dupliceret, delte de to linjer
             samme designs-objekt (shallow copy). Det betød at fjern-design
             på den ene fjernede også på den anden. Også scale, drag og andre
@@ -508,7 +516,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.102 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.103 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1886,7 +1894,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.102
+    v1.103
   </div>
 </div>
 
@@ -1979,7 +1987,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.102 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.103 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -5906,6 +5914,10 @@ function recalc() {
       name: gl.name||'Tøj',
       sku:  gl.sku||'',
       farve: gl.selectedColor || '',  // v1.101: farve til PDF-tabeller
+      // v1.103: hex til farve-stribe i PDF-cellen
+      farveHex: gl.selectedColor
+        ? (gl.colorHexMap?.[gl.selectedColor] || (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || null)
+        : null,
       qty:  lineQty,
       salePrice: avgSalePrice,
       total: lineTotal,
@@ -6511,6 +6523,20 @@ function pdfLine(doc, x1, y1, x2, y2) {
   doc.line(x1, y1, x2, y2);
 }
 
+// v1.103: Helper til at parse hex-farve-streng til [R, G, B] for jsPDF
+// Understøtter formaterne #RGB, #RRGGBB, RGB, RRGGBB
+function hexToRgb(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  let h = hex.replace('#', '').trim();
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  if (h.length !== 6) return null;
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
+  return [r, g, b];
+}
+
 // Helper: skriv header på side (firma + tilbudsnummer)
 function pdfHeader(doc, titel, tilbudNr) {
   const f = firmaInfo();
@@ -6642,6 +6668,8 @@ async function generateTilbudPDF() {
     ]);
 
     if(tøjRows.length > 0) {
+      // v1.103: Lookup-tabel til farve-hex pr. række (bruges i didDrawCell)
+      const farveHexByRow = d.clothesLines.map(cl => cl.farveHex || null);
       doc.autoTable({
         startY: y,
         head: [['Produkt', 'SKU', 'Størrelser', 'Farve', 'Antal', 'Stk-pris', 'Total']],
@@ -6668,6 +6696,23 @@ async function generateTilbudPDF() {
           6: { halign: 'right' },
         },
         margin: { left: margin, right: margin },
+        // v1.103: Tegn farve-stribe i højre side af farve-cellen (kolonne 3 i body)
+        didDrawCell: function(data) {
+          if (data.section === 'body' && data.column.index === 3) {
+            const hex = farveHexByRow[data.row.index];
+            const rgb = hexToRgb(hex);
+            if (rgb) {
+              const stripWidth = 6;
+              const stripX = data.cell.x + data.cell.width - stripWidth - 1.5;
+              const stripY = data.cell.y + 1.5;
+              const stripH = data.cell.height - 3;
+              doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+              doc.setDrawColor(...PDF_COLORS.border);
+              doc.setLineWidth(0.15);
+              doc.rect(stripX, stripY, stripWidth, stripH, 'FD');
+            }
+          }
+        },
       });
       y = doc.lastAutoTable.finalY + 6;
     }
@@ -6946,6 +6991,8 @@ async function generateOrdreseddelPDF() {
 
     // Byg detaljeret produktionsoversigt pr. tøjlinje
     const prodRows = [];
+    // v1.103: Parallelt array med hex-værdier (matcher prodRows index)
+    const farveHexByRow = [];
     garmentLinesData.forEach((gl, idx) => {
       if(!gl.sku) return;
       const totalQty = Object.values(gl.sizeQtys||{}).reduce((s,v)=>s+(+v||0),0) + (+gl.manualQty||0);
@@ -6963,6 +7010,11 @@ async function generateOrdreseddelPDF() {
         gl.selectedColor || '—',
         String(totalQty),
       ]);
+      farveHexByRow.push(
+        gl.selectedColor
+          ? (gl.colorHexMap?.[gl.selectedColor] || (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || null)
+          : null
+      );
     });
 
     if(prodRows.length > 0) {
@@ -6989,6 +7041,23 @@ async function generateOrdreseddelPDF() {
           4: { halign: 'right', fontStyle: 'bold' },
         },
         margin: { left: margin, right: margin },
+        // v1.103: Tegn farve-stribe i højre side af farve-cellen (kolonne 3 i body)
+        didDrawCell: function(data) {
+          if (data.section === 'body' && data.column.index === 3) {
+            const hex = farveHexByRow[data.row.index];
+            const rgb = hexToRgb(hex);
+            if (rgb) {
+              const stripWidth = 6;
+              const stripX = data.cell.x + data.cell.width - stripWidth - 1.5;
+              const stripY = data.cell.y + 1.5;
+              const stripH = data.cell.height - 3;
+              doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+              doc.setDrawColor(...PDF_COLORS.border);
+              doc.setLineWidth(0.15);
+              doc.rect(stripX, stripY, stripWidth, stripH, 'FD');
+            }
+          }
+        },
       });
       y = doc.lastAutoTable.finalY + 8;
     }
