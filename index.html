@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.095
+  Version: 1.096
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.095  (2026-04-30)  ⭐ Aktuel — Forenkling + drag-aktivér
+  v1.096  (2026-04-30)  ⭐ Aktuel — Drag-aktivér fix + ingen blink
+          • FIX: Drag-and-drop på inaktivt felt aktiverer nu KORREKT
+            (handleDesignDragOver returnerede før preventDefault på inaktive
+            felter, så browseren afviste drop'en — løst med ny Auto-version)
+          • Light-update i stedet for full re-render ved skala-ændring
+            → andre felter blinker ikke længere når man justerer ét
+          • Ny funktion updateDesignFieldDisplay opdaterer kun ÉT felts
+            DOM (zone, DPI, dim-tekst, warning) uden at re-render alt
+
+  v1.095  (2026-04-30) — Forenkling + drag-aktivér
           • ↑/↓-pile på cm-tekst FJERNET (kun statisk visning nu)
             — slider er det eneste skala-kontrol fremover
           • Slider også for ærmer (var tidligere kun front/back)
@@ -436,7 +445,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.095 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.096 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1814,7 +1823,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.095
+    v1.096
   </div>
 </div>
 
@@ -1907,7 +1916,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.095 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.096 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4371,6 +4380,16 @@ function handleDesignDragOver(e, lineIdx, pos) {
   e.currentTarget.classList.add('drag-over');
 }
 
+// v1.096: dragover for INAKTIVE felter (felter accepterer drag selvom de ikke er aktive endnu)
+function handleDesignDragOverAuto(e, lineIdx, pos) {
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  // Hvis feltet allerede har et design, blok drop (kan ikke overskrive)
+  if (gl.designs?.[pos]) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  e.currentTarget.classList.add('drag-over');
+}
+
 function handleDesignDragLeave(e) {
   e.currentTarget.classList.remove('drag-over');
 }
@@ -4768,7 +4787,85 @@ function setDesignScale(lineIdx, pos, scalePercent) {
   // Clamp 30-100
   scalePercent = Math.max(30, Math.min(100, scalePercent));
   design.scalePercent = scalePercent;
-  renderGarmentLines();
+  // v1.096: Light-update i stedet for full re-render — undgår at andre felter blinker
+  updateDesignFieldDisplay(lineIdx, pos);
+}
+
+// v1.096: Opdaterer kun ÉT design-felt's display (DPI, dim, warning, zone) uden at
+// re-rendere hele linjen. Bruges ved skala-ændring så andre felter ikke blinker.
+function updateDesignFieldDisplay(lineIdx, pos) {
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  const design = gl.designs?.[pos]; if (!design) return;
+  const posSize = gl.positions?.[pos]?.size || ((pos === 'sleeve_l' || pos === 'sleeve_r') ? 'small' : 'large');
+  const _dimCm = getTrykDimensions(pos, posSize);
+  if (!_dimCm || !_dimCm.w || !_dimCm.h) return;
+  const sc = (design.scalePercent || 100) / 100;
+  // 1) Opdater zone-størrelse
+  const zone = document.getElementById(`tryk_zone_${lineIdx}_${pos}`);
+  if (zone && design.baseZoneWidthPct && design.baseZoneHeightPct) {
+    const w = (design.baseZoneWidthPct  * design.scalePercent) / 100;
+    const h = (design.baseZoneHeightPct * design.scalePercent) / 100;
+    zone.style.width  = w + '%';
+    zone.style.height = h + '%';
+    design.zoneWidthPct  = w;
+    design.zoneHeightPct = h;
+  }
+  // 2) Opdater slider og %-tekst
+  const slider = document.getElementById(`scale_slider_${lineIdx}_${pos}`);
+  const pctEl  = document.getElementById(`scale_pct_${lineIdx}_${pos}`);
+  if (slider) slider.value = Math.round(design.scalePercent);
+  if (pctEl)  pctEl.textContent = Math.round(design.scalePercent) + '%';
+  // 3) Opdater DPI badge + cm-tekst
+  const dpiInfo = getDesignDpi(design, _dimCm);
+  const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+  const newDimWcm = (_dimCm.w * sc);
+  const newDimHcm = (_dimCm.h * sc);
+  // Find dim-badge for det specifikke felt (lineIdx + pos)
+  const designBox = document.getElementById(`design_box_${lineIdx}_${pos}`);
+  if (designBox) {
+    // dim-badge er søsken til design-zone-box, ikke barn
+    const designZoneEl = designBox.closest('.design-zone');
+    if (designZoneEl) {
+      const dimEl = designZoneEl.querySelector('.design-zone-dim.has-controls');
+      if (dimEl) {
+        // Reconstruct dim HTML
+        const dpiBadgeForDim = dpiInfo
+          ? `<span class="design-zone-dpi dpi-${dpiInfo.level}" style="margin-right:10px;font-size:13px">${dpiInfo.dpi} DPI</span>`
+          : '';
+        dimEl.innerHTML = `${dpiBadgeForDim}
+          <span class="dim-num">${fmt(newDimWcm)}</span>
+          <span class="dim-x">×</span>
+          <span class="dim-num">${fmt(newDimHcm)}</span>
+          <span class="dim-unit">cm</span>`;
+      }
+    }
+  }
+  // 4) Opdater warning-state
+  const designForCheck = {
+    ...design,
+    position: design.position,
+    zoneWidthPct: design.zoneWidthPct,
+    zoneHeightPct: design.zoneHeightPct,
+    positionType: (pos === 'sleeve_l' || pos === 'sleeve_r') ? 'sleeve' : pos
+  };
+  const hasWarning = isDesignContentOutsideBox(designForCheck);
+  if (designBox) {
+    if (hasWarning) {
+      designBox.classList.add('has-warning');
+      // Tilføj warning-icon hvis det ikke er der
+      if (!designBox.querySelector('.design-zone-warning-icon')) {
+        const warnEl = document.createElement('div');
+        warnEl.className = 'design-zone-warning-icon';
+        warnEl.title = 'Designet går udover t-shirten — kan ikke trykkes som vist';
+        warnEl.textContent = '⚠️';
+        designBox.appendChild(warnEl);
+      }
+    } else {
+      designBox.classList.remove('has-warning');
+      const warnEl = designBox.querySelector('.design-zone-warning-icon');
+      if (warnEl) warnEl.remove();
+    }
+  }
 }
 
 // v1.087: Center designet vandret + lodret i felt-boksen
@@ -4825,18 +4922,8 @@ function setDesignScaleLive(lineIdx, pos, scalePercent) {
   const design = gl.designs?.[pos]; if (!design) return;
   scalePercent = Math.max(30, Math.min(100, +scalePercent));
   design.scalePercent = scalePercent;
-  // Light update: opdatér zone-størrelse direkte uden re-render
-  const zone = document.getElementById(`tryk_zone_${lineIdx}_${pos}`);
-  const pctEl = document.getElementById(`scale_pct_${lineIdx}_${pos}`);
-  if (zone && design.baseZoneWidthPct && design.baseZoneHeightPct) {
-    const w = (design.baseZoneWidthPct  * scalePercent) / 100;
-    const h = (design.baseZoneHeightPct * scalePercent) / 100;
-    zone.style.width  = w + '%';
-    zone.style.height = h + '%';
-    design.zoneWidthPct = w;
-    design.zoneHeightPct = h;
-  }
-  if (pctEl) pctEl.textContent = scalePercent + '%';
+  // v1.096: Light-update samme som setDesignScale, men fra slider 'oninput' (live mens drag)
+  updateDesignFieldDisplay(lineIdx, pos);
 }
 
 // Drag-handle resize state
@@ -5205,8 +5292,9 @@ function buildLineTrykSection(i, gl) {
     if (!isActive) {
       // Tilstand 1: inaktiv
       // v1.095: Drag-and-drop på inaktivt felt — aktiverer + sætter default + uploader
+      // v1.096: brug Auto-versioner af handlers så drop kan ske selvom felt ikke er aktivt
       boxClick = `onclick="toggleLinePos(${i}, '${m.key}')"`;
-      boxDragOver  = `ondragover="handleDesignDragOver(event, ${i}, '${m.key}')"`;
+      boxDragOver  = `ondragover="handleDesignDragOverAuto(event, ${i}, '${m.key}')"`;
       boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
       boxDrop      = `ondrop="handleDesignDropAuto(event, ${i}, '${m.key}')"`;
       boxStyle = `background-color:${tekstilFarve}`;
