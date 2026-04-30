@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.091
+  Version: 1.092
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.091  (2026-04-30)  ⭐ Aktuel — Layout-justeringer fra John
+  v1.092  (2026-04-30)  ⭐ Aktuel — DPI-fix + layout-justeringer
+          • FIX: DPI genberegnes nu korrekt når bruger skalerer designet
+            ned (var fastfrosset til upload-tids-værdi)
+          • DPI-badge flyttet til venstre for cm-størrelse på samme linje
+          • Filename + DPI ikke længere i samme blok — DPI er ved dim
+          • Layout: ærmer (V/H) stables vertikalt ved siden af bagsiden
+            i stedet for under den. Total bredde er nu mere kompakt.
+
+  v1.091  (2026-04-30) — Layout-justeringer fra John
           • Antal pr. størrelse: label står nu OVER input (var ved siden af)
             — fjerner forvirring om hvilken kasse hører til hvilken størrelse
           • Position-labels (FORSIDE/BAGSIDE/V. ÆRME/H. ÆRME):
@@ -403,7 +411,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.091 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.092 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -695,9 +703,21 @@
     display: flex;
     /* v1.088: 50px gap så der er plads til action-knapper til højre for hvert felt */
     gap: 50px;
-    align-items: flex-end;
+    align-items: flex-start;
     flex-wrap: wrap;
     padding: 10px 0;
+  }
+  /* v1.092: Sleeves stables vertikalt ved siden af bagside */
+  .design-zones-sleeves {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    align-items: center;
+  }
+  /* Sleeves har ikke skala-slider eller størrelse-dropdown, så de behøver ikke
+     den store min-height. Sleeve-feltet er selv 225px + label/dim/filename ≈ 280px */
+  .design-zones-sleeves .design-zone {
+    min-height: auto;
   }
   .design-zone {
     display: flex;
@@ -1766,7 +1786,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.091
+    v1.092
   </div>
 </div>
 
@@ -1859,7 +1879,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.091 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.092 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4475,9 +4495,13 @@ async function removeDesignFromPos(lineIdx, pos, ev) {
 // (gul <200, orange 200-299, grøn ≥300)
 function getDesignDpi(design, dimCm) {
   if (!design || !design.width || !dimCm || !dimCm.w) return null;
-  // Brug bredden som reference (designet fylder hele bredden af tryk-zonen i basal version)
+  // v1.092: Scalér tryk-størrelse efter scalePercent — når brugeren skalerer ned
+  // bliver det fysiske tryk mindre, og DPI bliver tilsvarende højere.
+  const scale = (typeof design.scalePercent === 'number' ? design.scalePercent : 100) / 100;
+  const actualCmW = dimCm.w * scale;
+  if (!actualCmW) return null;
   // 1 inch = 2.54 cm  →  px / cm * 2.54 = DPI
-  const dpiW = (design.width / dimCm.w) * 2.54;
+  const dpiW = (design.width / actualCmW) * 2.54;
   let level = 'green';
   if (dpiW < 200) level = 'yellow';
   else if (dpiW < 300) level = 'orange';
@@ -5101,6 +5125,7 @@ function buildLineTrykSection(i, gl) {
       const upArrow = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 7.5 6 4 9.5 7.5"/></svg>`;
       const downArrow = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 4.5 6 8 9.5 4.5"/></svg>`;
       dimBadgeHtml = `<div class="design-zone-dim has-controls">
+        ${dpiBadgeForDim}
         <span class="dim-num-group">
           <span class="dim-num">${fmt(sw)}</span>
           <span class="dim-arrows">
@@ -5259,13 +5284,16 @@ function buildLineTrykSection(i, gl) {
       design._hasWarning = hasWarning;
     }
 
-    // Filinfo + DPI-badge under feltet (kun når design er uploadet)
-    // v1.087: px-dimensioner fjernet — kun cm-mål er relevant for brugeren
+    // v1.092: Filinfo (kun filename) under feltet — DPI flyttet ned til dim-linjen for kompakthed
     const fileInfoHtml = (isActive && design) ? `
       <div class="design-zone-fileinfo">
-        <div class="design-zone-filename" title="${design.filename}">${design.filename.length > 18 ? design.filename.substring(0,15)+'…' : design.filename}</div>
-        ${dpiInfo ? `<div style="margin-top:2px"><span class="design-zone-dpi dpi-${dpiInfo.level}">${dpiInfo.dpi} DPI</span></div>` : ''}
+        <div class="design-zone-filename" title="${design.filename}">${design.filename.length > 22 ? design.filename.substring(0,20)+'…' : design.filename}</div>
       </div>` : '';
+
+    // v1.092: DPI flyttes ind i dim-linjen til venstre for størrelse
+    const dpiBadgeForDim = (isActive && design && dpiInfo)
+      ? `<span class="design-zone-dpi dpi-${dpiInfo.level}" style="margin-right:10px;font-size:13px">${dpiInfo.dpi} DPI</span>`
+      : '';
 
     // v1.079: Skala-slider under feltet (kun når design uploadet)
     const scalePctVal = (design && typeof design.scalePercent === 'number') ? Math.round(design.scalePercent) : 100;
@@ -5297,7 +5325,9 @@ function buildLineTrykSection(i, gl) {
         ${sizeSelect}
         <div class="design-zone-price" id="tryk_price_${i}_${m.key}" style="display:none">${isActive ? fmtNum(priceInfo.price) + ' kr/stk' : ''}</div>
       </div>`;
-  }).join('');
+  });
+  // v1.092: zones er nu et array — front, back, sleeve_l, sleeve_r — ikke en samlet streng.
+  // Vi grupperer dem i return-template'en så ærmer kan stå i deres egen kolonne.
 
   return `
     <div class="tryk-section ${expanded?'expanded':''}" id="tryk_section_${i}">
@@ -5306,7 +5336,14 @@ function buildLineTrykSection(i, gl) {
         <span class="tryk-header-summary">${summary}${lineQty>0 ? ' · '+lineQty+' stk' : ''}</span>
       </div>
       <div class="tryk-content">
-        <div class="design-zones">${zones}</div>
+        <div class="design-zones">
+          ${zones[0]}
+          ${zones[1]}
+          <div class="design-zones-sleeves">
+            ${zones[2]}
+            ${zones[3]}
+          </div>
+        </div>
       </div>
     </div>`;
 }
