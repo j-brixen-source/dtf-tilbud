@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.086
+  Version: 1.087
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.086  (2026-04-30)  ⭐ Aktuel — Felter 50% større + sleeve-zone-fix
+  v1.087  (2026-04-30)  ⭐ Aktuel — Justeringer fra John
+          • px-dimensioner fjernet helt fra info under feltet (kun cm)
+          • Default position-logik: kun "Lille" (≤12×12 cm) på forside
+            placeres øverst-højre. Stort/XL placeres center-ned ligesom bagside
+          • Snap-to-center under drag (±8 px snap til midt)
+          • Visuel snap-indikator (gul kant) når aktiv
+          • Center-knap til højre for felt-boksen — klik = centrér design
+          • Action-panel forberedt til flere knapper senere
+
+  v1.086  (2026-04-30) — Felter 50% større + sleeve-zone-fix
           • Felt-bokse: 150×210 → 225×315 (front/back), 75×100 → 112×150 (sleeves)
           • Bedre synlighed af designs
           • FIX: 10×10 cm zone på ærmer er nu kvadratisk (var rektangulær før)
@@ -361,7 +370,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.086 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.087 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1020,6 +1029,55 @@
   }
 
   /* ──────────────────────────────────────────────────────────
+     v1.087: Snap-to-center indikator (gul stiplet kant ved snap)
+     ────────────────────────────────────────────────────────── */
+  .tryk-zone.snap-x {
+    box-shadow: inset 0 0 0 1px #FFC107;
+  }
+  .tryk-zone.snap-y {
+    box-shadow: inset 0 0 0 1px #FFC107;
+  }
+
+  /* ──────────────────────────────────────────────────────────
+     v1.087: Action-knapper til højre for felt-boksen (center, evt. flere)
+     ────────────────────────────────────────────────────────── */
+  .design-zone-actions {
+    position: absolute;
+    top: 30px;
+    right: -34px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 11;
+  }
+  .design-zone-actions button {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: var(--muted);
+    transition: all 0.12s ease;
+    font-size: 0; /* hide any text fallback */
+  }
+  .design-zone-actions button:hover {
+    border-color: #185FA5;
+    color: #185FA5;
+    transform: scale(1.08);
+  }
+  .design-zone-actions button:active {
+    transform: scale(0.95);
+  }
+  .design-zone-actions svg {
+    width: 14px; height: 14px;
+    display: block;
+  }
+
+  /* ──────────────────────────────────────────────────────────
      v1.079: Slider under feltet (kun synlig når design er uploadet)
      ────────────────────────────────────────────────────────── */
   .design-zone-scale-slider {
@@ -1563,7 +1621,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.086
+    v1.087
   </div>
 </div>
 
@@ -1656,7 +1714,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.086 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.087 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4305,16 +4363,22 @@ function getTrykZonePercent(pos, dimCm) {
 
 // Default-position for et nyt design (procent af felt-boks: x=left, y=top)
 // pos er 'front'|'back'|'sleeve_l'|'sleeve_r', zonePct er output fra getTrykZonePercent
-function getDefaultDesignPosition(pos, zonePct) {
+function getDefaultDesignPosition(pos, zonePct, dimCm) {
   if (!zonePct) return { x: 50, y: 50 };
   if (pos === 'sleeve_l' || pos === 'sleeve_r') {
     // Centreret på sleeve
     return { x: 50 - zonePct.wPct / 2, y: 50 - zonePct.hPct / 2 };
   }
   if (pos === 'front') {
-    // Øverst-højre (venstre bryst når trøje er på)
-    // x = højre side, justér så tryk-zonen ikke går ud over kanten
-    return { x: Math.max(0, 100 - zonePct.wPct - 8), y: 12 };
+    // v1.087: Kun "Lille" (≤12×12 cm) placeres øverst-højre (venstre bryst).
+    // Stort/XL/andre placeres center-ned ligesom bagside (brystcentreret tryk).
+    const isSmall = dimCm && dimCm.w && dimCm.h && (dimCm.w <= 12 && dimCm.h <= 12);
+    if (isSmall) {
+      // Øverst-højre (venstre bryst når trøje er på)
+      return { x: Math.max(0, 100 - zonePct.wPct - 8), y: 12 };
+    }
+    // Stort/XL: centreret-ned ligesom bagside
+    return { x: 50 - zonePct.wPct / 2, y: 18 };
   }
   // Bagside: centreret-ned (brøst-omkring centreret)
   return { x: 50 - zonePct.wPct / 2, y: 18 };
@@ -4486,6 +4550,20 @@ function setDesignScale(lineIdx, pos, scalePercent) {
   renderGarmentLines();
 }
 
+// v1.087: Center designet vandret + lodret i felt-boksen
+function centerDesignInBox(lineIdx, pos, event) {
+  if (event) event.stopPropagation();
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  const design = gl.designs?.[pos]; if (!design) return;
+  const zoneW = design.zoneWidthPct  || 80;
+  const zoneH = design.zoneHeightPct || 80;
+  design.position = {
+    x: 50 - zoneW / 2,
+    y: 50 - zoneH / 2
+  };
+  renderGarmentLines();
+}
+
 // v1.079: Live-update fra slider mens den dragges (uden re-render)
 function setDesignScaleLive(lineIdx, pos, scalePercent) {
   const gl = garmentLinesData[lineIdx]; if (!gl) return;
@@ -4622,6 +4700,24 @@ function handleZoneDragMove(e) {
   const minVisible = 0.2;
   zoneLeftPx = Math.max(-zoneW * (1 - minVisible), Math.min(boxRect.width  - zoneW * minVisible, zoneLeftPx));
   zoneTopPx  = Math.max(-zoneH * (1 - minVisible), Math.min(boxRect.height - zoneH * minVisible, zoneTopPx));
+  // v1.087: Snap-to-center når zonens center er nær felt-boksens center (±8 px)
+  const SNAP_PX = 8;
+  const zoneCenterX = zoneLeftPx + zoneW / 2;
+  const zoneCenterY = zoneTopPx  + zoneH / 2;
+  const boxCenterX  = boxRect.width  / 2;
+  const boxCenterY  = boxRect.height / 2;
+  if (Math.abs(zoneCenterX - boxCenterX) < SNAP_PX) {
+    zoneLeftPx = boxCenterX - zoneW / 2;
+    zone.classList.add('snap-x');
+  } else {
+    zone.classList.remove('snap-x');
+  }
+  if (Math.abs(zoneCenterY - boxCenterY) < SNAP_PX) {
+    zoneTopPx = boxCenterY - zoneH / 2;
+    zone.classList.add('snap-y');
+  } else {
+    zone.classList.remove('snap-y');
+  }
   // Konverter til procent (relativt til felt-bokses bredde/højde)
   const xPct = (zoneLeftPx / boxRect.width) * 100;
   const yPct = (zoneTopPx  / boxRect.height) * 100;
@@ -4635,6 +4731,8 @@ function handleZoneDragEnd() {
   if (!_zoneDragState) return;
   const { lineIdx, pos, zone } = _zoneDragState;
   zone.classList.remove('dragging');
+  zone.classList.remove('snap-x');
+  zone.classList.remove('snap-y');
   // Persistér position på gl.designs
   const gl = garmentLinesData[lineIdx];
   if (gl && gl.designs?.[pos]) {
@@ -4854,7 +4952,7 @@ function buildLineTrykSection(i, gl) {
       // Indikator-zone med upload-tekst INDE i den (ingen separat boks)
       let zoneIndicatorHtml = '';
       if (zonePct && currentDim) {
-        const defPos = getDefaultDesignPosition(m.key, zonePct);
+        const defPos = getDefaultDesignPosition(m.key, zonePct, _dimCm);
         const isSleeve = (m.type === 'sleeve');
         const innerText = isSleeve
           ? `<div class="tryk-zone-uploadtext"><div class="tzu-arrow">↑</div></div>`
@@ -4876,7 +4974,7 @@ function buildLineTrykSection(i, gl) {
       boxStyle = `background-color:${tekstilFarve}`;
       // Position: brug gemt position eller default
       const savedPos = design.position;
-      const defPos = (zonePct ? getDefaultDesignPosition(m.key, zonePct) : { x: 50, y: 50 });
+      const defPos = (zonePct ? getDefaultDesignPosition(m.key, zonePct, _dimCm) : { x: 50, y: 50 });
       const posX = (savedPos && typeof savedPos.x === 'number') ? savedPos.x : defPos.x;
       const posY = (savedPos && typeof savedPos.y === 'number') ? savedPos.y : defPos.y;
       // v1.079: Skala (30-100%) — design kan kun gøres MINDRE end max
@@ -4921,6 +5019,18 @@ function buildLineTrykSection(i, gl) {
         ? `<div class="design-zone-warning-icon" title="Designet går udover t-shirten — kan ikke trykkes som vist">⚠️</div>`
         : '';
 
+      // v1.087: Action-knapper til højre for felt-boksen — center-knap (flere kommer senere)
+      const actionsPanel = `
+        <div class="design-zone-actions">
+          <button onclick="centerDesignInBox(${i}, '${m.key}', event)" title="Centrér design i felt">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <line x1="12" y1="3" x2="12" y2="21"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+            </svg>
+          </button>
+        </div>`;
+
       boxInner = `
         <div class="tryk-zone ${animClass} ${isPdfClass}"
              id="tryk_zone_${i}_${m.key}"
@@ -4931,6 +5041,7 @@ function buildLineTrykSection(i, gl) {
           ${handlesHtml}
         </div>
         ${warningIcon}
+        ${actionsPanel}
         <div class="design-zone-check">✓</div>`;
       deactivateBtn = `<button class="design-zone-remove" onclick="removeDesignFromPos(${i}, '${m.key}', event)" title="Fjern design">×</button>`;
 
@@ -4940,17 +5051,11 @@ function buildLineTrykSection(i, gl) {
     }
 
     // Filinfo + DPI-badge under feltet (kun når design er uploadet)
-    // v1.080: Vis også bredde × højde i pixels
-    const dimText = (design && design.width && design.height)
-      ? `${design.width} × ${design.height} px`
-      : '';
+    // v1.087: px-dimensioner fjernet — kun cm-mål er relevant for brugeren
     const fileInfoHtml = (isActive && design) ? `
       <div class="design-zone-fileinfo">
         <div class="design-zone-filename" title="${design.filename}">${design.filename.length > 18 ? design.filename.substring(0,15)+'…' : design.filename}</div>
-        <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap">
-          ${dpiInfo ? `<div class="design-zone-dpi dpi-${dpiInfo.level}">${dpiInfo.dpi} DPI</div>` : ''}
-          ${dimText ? `<div style="font-size:9px;color:var(--muted)">${dimText}</div>` : ''}
-        </div>
+        ${dpiInfo ? `<div style="margin-top:2px"><span class="design-zone-dpi dpi-${dpiInfo.level}">${dpiInfo.dpi} DPI</span></div>` : ''}
       </div>` : '';
 
     // v1.079: Skala-slider under feltet (kun når design uploadet)
