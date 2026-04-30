@@ -4,12 +4,35 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.110
+  Version: 1.111
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.110  (2026-04-30)  ⭐ Aktuel — Kategori-liste på Tab 2 (read-only)
+  v1.111  (2026-04-30)  ⭐ Aktuel — Kategori-admin UI: Tilføj/Rediger/Slet
+          • Hver kategori-række har nu "Rediger" + "Slet"-knapper
+          • "+ Tilføj kategori"-knap i header på Tab 2
+          • Edit-modal (~560px bred, centreret) med:
+              - Key (read-only ved rediger, editable ved tilføj — slug-format)
+              - Label (textinput)
+              - Sort order (number)
+              - Detect keywords (kommadelt textinput → array)
+              - Pr. position (front/back/sleeve_l/sleeve_r):
+                * Checkbox "Aktiv"
+                * Når aktiv: liste over sizes (navn, w, h, pris) + "Tilføj"
+                * Hver size kan slettes individuelt
+              - Annullér / Gem ændringer
+          • Validering ved Gem:
+              - Label må ikke være tom
+              - Key (ved tilføj) skal matche /^[a-z][a-z0-9_]{1,31}$/
+              - Mindst én position skal være aktiv
+              - Aktive positioner skal have mindst 1 size
+              - Sizes: w, h, pris alle ≥ 0
+          • Slet bruger showConfirm() med custom besked
+          • Toast-feedback ved succes ("Kategori gemt"/"Slettet")
+          • Realtime sync mellem medarbejdere kommer i v1.112
+
+  v1.110  (2026-04-30) — Kategori-liste på Tab 2 (read-only)
           • Tab 2 ("Trykpositioner & Kategorier") viser nu de 10 default-
             kategorier loaded fra Supabase-tabellen 'produkt_kategorier'
           • Ny global window._kategorier (cache, fyldes ved first-load)
@@ -588,7 +611,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.110 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.111 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -835,6 +858,228 @@
     font-size: 13px;
     border-radius: var(--radius-sm);
   }
+
+  /* v1.111: Knapper på kategori-rækker */
+  .kat-row-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .kat-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--border2);
+    background: white;
+    color: var(--text);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .kat-btn:hover { background: var(--bg); border-color: var(--text); }
+  .kat-btn.danger { color: var(--red); }
+  .kat-btn.danger:hover { background: var(--red-bg); border-color: var(--red); }
+  .kat-btn-add {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--text);
+    background: var(--text);
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .kat-btn-add:hover { opacity: 0.85; }
+
+  /* v1.111: Kategori-modal (overlay + boks) */
+  .kat-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: ccfade 0.12s ease-out;
+    padding: 20px;
+  }
+  .kat-modal {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 12px 50px rgba(0, 0, 0, 0.22);
+    width: 100%;
+    max-width: 580px;
+    max-height: 90vh;
+    overflow-y: auto;
+    font-family: inherit;
+  }
+  .kat-modal-header {
+    padding: 18px 22px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 1;
+  }
+  .kat-modal-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .kat-modal-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0 8px;
+    line-height: 1;
+  }
+  .kat-modal-close:hover { color: var(--text); }
+  .kat-modal-body { padding: 18px 22px; }
+  .kat-modal-footer {
+    padding: 14px 22px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    position: sticky;
+    bottom: 0;
+    background: white;
+  }
+  .kat-modal-field {
+    margin-bottom: 14px;
+  }
+  .kat-modal-field label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .kat-modal-field input[type=text],
+  .kat-modal-field input[type=number] {
+    width: 100%;
+    padding: 7px 10px;
+    font-size: 13px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+  }
+  .kat-modal-field input[type=number] { max-width: 110px; }
+  .kat-modal-field-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .kat-modal-field-row > * { flex: 1; }
+  .kat-modal-field-row .kat-modal-field { margin-bottom: 0; }
+  .kat-key-readonly {
+    padding: 7px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .kat-pos-section {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: var(--bg);
+  }
+  .kat-pos-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .kat-pos-header label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .kat-pos-header input[type=checkbox] { transform: scale(1.1); cursor: pointer; }
+  .kat-sizes-wrapper {
+    margin-top: 8px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px;
+  }
+  .kat-size-row {
+    display: grid;
+    grid-template-columns: 1fr 60px 8px 60px 60px 28px;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .kat-size-row:last-child { margin-bottom: 0; }
+  .kat-size-row input {
+    padding: 5px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .kat-size-row .size-x {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .kat-size-del {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+  }
+  .kat-size-del:hover { color: var(--red); }
+  .kat-size-headers {
+    display: grid;
+    grid-template-columns: 1fr 60px 8px 60px 60px 28px;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    padding: 0 2px;
+  }
+  .kat-add-size-btn {
+    margin-top: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    background: white;
+    border: 1px dashed var(--border2);
+    border-radius: 4px;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+  }
+  .kat-add-size-btn:hover { border-color: var(--text); color: var(--text); }
+  .kat-modal-error {
+    background: var(--red-bg);
+    color: var(--red);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .kat-modal-error.show { display: block; }
 
   /* CARDS */
   .card {
@@ -2205,7 +2450,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.110
+    v1.111
   </div>
 </div>
 
@@ -2298,7 +2543,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.110 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.111 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -2470,9 +2715,7 @@
           <div class="kat-list-title">
             Produktkategorier<span class="kat-count" id="katListCount"></span>
           </div>
-          <div style="font-size:11px;color:var(--muted)">
-            Read-only · Rediger/Tilføj kommer i v1.111
-          </div>
+          <button class="kat-btn-add" onclick="openKategoriModal(null)">+ Tilføj kategori</button>
         </div>
 
         <!-- Container hvor renderKategorierList() injicerer rækker -->
@@ -3113,10 +3356,343 @@ function renderKategorierList() {
       +       '</span>'
       +     '</div>'
       +   '</div>'
+      +   '<div class="kat-row-actions">'
+      +     '<button class="kat-btn" onclick="openKategoriModal(' + (kat.id || 'null') + ')">Rediger</button>'
+      +     '<button class="kat-btn danger" onclick="deleteKategori(' + (kat.id || 'null') + ', event)">Slet</button>'
+      +   '</div>'
       + '</div>';
   }).join('');
 
   container.innerHTML = rows;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.111: Kategori-admin — åbn/luk modal, tilføj/rediger/slet
+// ──────────────────────────────────────────────────────────────────────
+
+const KAT_POSITIONS = [
+  { key: 'front',    label: 'Forside' },
+  { key: 'back',     label: 'Bagside' },
+  { key: 'sleeve_l', label: 'Venstre ærme' },
+  { key: 'sleeve_r', label: 'Højre ærme' }
+];
+
+// Åbn modal — hvis id er null/0 → tilføj-mode, ellers rediger
+function openKategoriModal(id) {
+  const isEdit = !!id;
+  const kat = isEdit ? (window._kategorier || []).find(k => k.id === id) : null;
+  if (isEdit && !kat) {
+    showToast('Kategori ikke fundet — genindlæs siden', 'error');
+    return;
+  }
+
+  // Default-værdier hvis tilføj
+  const data = kat || {
+    id: null,
+    key: '',
+    label: '',
+    detect_keywords: [],
+    positions: { front: {enabled:true,sizes:[]}, back:{enabled:false,sizes:[]}, sleeve_l:{enabled:false,sizes:[]}, sleeve_r:{enabled:false,sizes:[]} },
+    sort_order: ((window._kategorier || []).reduce((m, k) => Math.max(m, k.sort_order || 0), 0) + 10),
+    aktiv: true
+  };
+
+  // Byg modal-DOM
+  const overlay = document.createElement('div');
+  overlay.className = 'kat-modal-overlay';
+  overlay.id = 'katModalOverlay';
+
+  // Pre-compute key-felt HTML (ternary inde i template gør Acorn forvirret)
+  const keyFieldHtml = isEdit
+    ? '<div class="kat-key-readonly">' + escapeHtml(data.key) + '</div>'
+    : '<input type="text" id="katKey" placeholder="fx my_kategori" value="' + escapeHtml(data.key) + '">';
+  const keyLabelText = isEdit ? 'Key (kan ikke ændres)' : 'Key (slug, små bogstaver)';
+
+  const modal = document.createElement('div');
+  modal.className = 'kat-modal';
+  modal.innerHTML = ''
+    + '<div class="kat-modal-header">'
+    +   '<div class="kat-modal-title">' + (isEdit ? 'Rediger kategori' : 'Tilføj ny kategori') + '</div>'
+    +   '<button class="kat-modal-close" onclick="closeKategoriModal()" title="Luk">&times;</button>'
+    + '</div>'
+    + '<div class="kat-modal-body">'
+    +   '<div class="kat-modal-error" id="katModalError"></div>'
+    +   '<div class="kat-modal-field-row">'
+    +     '<div class="kat-modal-field" style="flex:0 0 38%">'
+    +       '<label>' + keyLabelText + '</label>'
+    +       keyFieldHtml
+    +     '</div>'
+    +     '<div class="kat-modal-field">'
+    +       '<label>Label (vises i UI)</label>'
+    +       '<input type="text" id="katLabel" placeholder="fx Bukser / Shorts" value="' + escapeHtml(data.label) + '">'
+    +     '</div>'
+    +     '<div class="kat-modal-field" style="flex:0 0 110px">'
+    +       '<label>Sort order</label>'
+    +       '<input type="number" id="katSortOrder" min="0" step="10" value="' + (data.sort_order || 10) + '">'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="kat-modal-field">'
+    +     '<label>Detect keywords (komma-separeret — bruges til auto-detect af kategori ud fra produktnavn/type)</label>'
+    +     '<input type="text" id="katKeywords" placeholder="fx tshirt, t-shirt, tee, polo" value="' + escapeHtml((data.detect_keywords || []).join(', ')) + '">'
+    +   '</div>'
+    +   '<div style="font-size:12px;color:var(--muted);font-weight:500;margin:18px 0 8px">Tryk-positioner og størrelser</div>'
+    +   '<div id="katPositions"></div>'
+    + '</div>'
+    + '<div class="kat-modal-footer">'
+    +   '<button class="custom-confirm-btn cancel" onclick="closeKategoriModal()">Annullér</button>'
+    +   '<button class="custom-confirm-btn ok" id="katSaveBtn">' + (isEdit ? 'Gem ændringer' : 'Opret kategori') + '</button>'
+    + '</div>';
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Lukke-handlers
+  overlay.onclick = (e) => { if (e.target === overlay) closeKategoriModal(); };
+  document.addEventListener('keydown', katModalKeyHandler);
+
+  // Render positioner med deres sizes
+  KAT_POSITIONS.forEach(p => renderKatPositionSection(p, (data.positions || {})[p.key] || {enabled:false,sizes:[]}));
+
+  // Save-handler — bærer id med (null hvis tilføj)
+  document.getElementById('katSaveBtn').onclick = () => saveKategori(data.id, data.key);
+
+  // Fokus på første editable felt
+  setTimeout(() => {
+    const focusEl = document.getElementById(isEdit ? 'katLabel' : 'katKey');
+    if (focusEl) focusEl.focus();
+  }, 50);
+}
+
+function katModalKeyHandler(e) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeKategoriModal();
+  }
+}
+
+function closeKategoriModal() {
+  const overlay = document.getElementById('katModalOverlay');
+  if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  document.removeEventListener('keydown', katModalKeyHandler);
+}
+
+// Render én position-sektion (Forside/Bagside/V.ærme/H.ærme) med dens sizes
+function renderKatPositionSection(pos, posData) {
+  const container = document.getElementById('katPositions');
+  if (!container) return;
+
+  const enabled = !!posData.enabled;
+  const section = document.createElement('div');
+  section.className = 'kat-pos-section';
+  section.dataset.posKey = pos.key;
+  section.innerHTML = ''
+    + '<div class="kat-pos-header">'
+    +   '<label>'
+    +     '<input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="togglePosition(this, \'' + pos.key + '\')">'
+    +     pos.label
+    +   '</label>'
+    + '</div>'
+    + '<div class="kat-sizes-wrapper" style="display:' + (enabled ? 'block' : 'none') + '">'
+    +   '<div class="kat-size-headers">'
+    +     '<span>Navn</span>'
+    +     '<span>B (cm)</span>'
+    +     '<span></span>'
+    +     '<span>H (cm)</span>'
+    +     '<span>Pris (kr)</span>'
+    +     '<span></span>'
+    +   '</div>'
+    +   '<div class="kat-sizes-list"></div>'
+    +   '<button class="kat-add-size-btn" onclick="addSizeRow(this, \'' + pos.key + '\')">+ Tilføj størrelse</button>'
+    + '</div>';
+  container.appendChild(section);
+
+  // Indsæt eksisterende sizes
+  const list = section.querySelector('.kat-sizes-list');
+  (posData.sizes || []).forEach(s => list.appendChild(buildSizeRow(s)));
+
+  // Hvis enabled men ingen sizes: tilføj én tom række
+  if (enabled && (!posData.sizes || posData.sizes.length === 0)) {
+    list.appendChild(buildSizeRow({name:'', w:'', h:'', price:''}));
+  }
+}
+
+// Bygger én size-række (DOM-element med inputs)
+function buildSizeRow(size) {
+  const row = document.createElement('div');
+  row.className = 'kat-size-row';
+  row.innerHTML = ''
+    + '<input type="text"   class="size-name"  placeholder="fx Lille" value="' + escapeHtml(size.name || '') + '">'
+    + '<input type="number" class="size-w"     min="0" step="0.5"     value="' + (size.w != null ? size.w : '') + '">'
+    + '<span class="size-x">×</span>'
+    + '<input type="number" class="size-h"     min="0" step="0.5"     value="' + (size.h != null ? size.h : '') + '">'
+    + '<input type="number" class="size-price" min="0" step="1"       value="' + (size.price != null ? size.price : '') + '">'
+    + '<button class="kat-size-del" onclick="removeSizeRow(this)" title="Slet størrelse">🗑</button>';
+  return row;
+}
+
+function addSizeRow(buttonEl, posKey) {
+  const wrapper = buttonEl.closest('.kat-sizes-wrapper');
+  if (!wrapper) return;
+  const list = wrapper.querySelector('.kat-sizes-list');
+  list.appendChild(buildSizeRow({name:'', w:'', h:'', price:''}));
+}
+
+function removeSizeRow(buttonEl) {
+  const row = buttonEl.closest('.kat-size-row');
+  if (row && row.parentNode) row.parentNode.removeChild(row);
+}
+
+// Toggle aktiv/inaktiv på en position — viser/skjuler sizes-wrapper
+function togglePosition(checkbox, posKey) {
+  const section = checkbox.closest('.kat-pos-section');
+  if (!section) return;
+  const wrapper = section.querySelector('.kat-sizes-wrapper');
+  if (!wrapper) return;
+  if (checkbox.checked) {
+    wrapper.style.display = 'block';
+    // Hvis ingen sizes endnu, tilføj én tom række
+    const list = wrapper.querySelector('.kat-sizes-list');
+    if (list && list.children.length === 0) {
+      list.appendChild(buildSizeRow({name:'', w:'', h:'', price:''}));
+    }
+  } else {
+    wrapper.style.display = 'none';
+  }
+}
+
+// Læs DOM, validér, upsert til Supabase
+async function saveKategori(existingId, existingKey) {
+  const errEl = document.getElementById('katModalError');
+  const showError = (msg) => {
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.classList.add('show');
+    }
+  };
+  if (errEl) errEl.classList.remove('show');
+
+  // 1) Saml inputs
+  const isEdit = !!existingId;
+  const keyInput = document.getElementById('katKey');
+  const key = isEdit ? existingKey : (keyInput ? keyInput.value.trim().toLowerCase() : '');
+  const label = (document.getElementById('katLabel').value || '').trim();
+  const sortOrder = parseInt(document.getElementById('katSortOrder').value, 10);
+  const keywordsRaw = (document.getElementById('katKeywords').value || '').trim();
+  const detect_keywords = keywordsRaw
+    ? keywordsRaw.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  // 2) Validér grundfelter
+  if (!label) return showError('Label må ikke være tom');
+  if (!isEdit && !/^[a-z][a-z0-9_]{1,31}$/.test(key)) {
+    return showError('Key skal starte med et lille bogstav og kun indeholde a-z, 0-9 og _ (2-32 tegn)');
+  }
+  if (!isFinite(sortOrder) || sortOrder < 0) return showError('Sort order skal være et tal ≥ 0');
+
+  // 3) Tjek for duplikat key (kun ved tilføj)
+  if (!isEdit) {
+    const dup = (window._kategorier || []).some(k => k.key === key);
+    if (dup) return showError('En kategori med key "' + key + '" findes allerede');
+  }
+
+  // 4) Saml positioner
+  const positions = {};
+  let anyEnabled = false;
+  for (const p of KAT_POSITIONS) {
+    const section = document.querySelector('.kat-pos-section[data-pos-key="' + p.key + '"]');
+    const checkbox = section ? section.querySelector('input[type=checkbox]') : null;
+    const enabled = !!(checkbox && checkbox.checked);
+    if (enabled) anyEnabled = true;
+    const sizes = [];
+    if (enabled && section) {
+      const sizeRows = section.querySelectorAll('.kat-size-row');
+      for (let i = 0; i < sizeRows.length; i++) {
+        const row = sizeRows[i];
+        const nameVal  = row.querySelector('.size-name').value.trim();
+        const wVal     = parseFloat(row.querySelector('.size-w').value);
+        const hVal     = parseFloat(row.querySelector('.size-h').value);
+        const priceVal = parseFloat(row.querySelector('.size-price').value);
+        if (!nameVal && !isFinite(wVal) && !isFinite(hVal) && !isFinite(priceVal)) continue;  // tom række → spring over
+        if (!nameVal) return showError(p.label + ': størrelse #' + (i+1) + ' mangler navn');
+        if (!isFinite(wVal) || wVal < 0) return showError(p.label + ' / "' + nameVal + '": bredde skal være ≥ 0');
+        if (!isFinite(hVal) || hVal < 0) return showError(p.label + ' / "' + nameVal + '": højde skal være ≥ 0');
+        if (!isFinite(priceVal) || priceVal < 0) return showError(p.label + ' / "' + nameVal + '": pris skal være ≥ 0');
+        sizes.push({ name: nameVal, w: wVal, h: hVal, price: priceVal });
+      }
+      if (sizes.length === 0) return showError(p.label + ' er aktiv men har ingen størrelser');
+    }
+    positions[p.key] = { enabled, sizes };
+  }
+
+  if (!anyEnabled) return showError('Mindst én position skal være aktiv');
+
+  // 5) Upsert til Supabase
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) return showError('Supabase ikke klar');
+
+  const payload = {
+    key,
+    label,
+    detect_keywords,
+    positions,
+    sort_order: sortOrder,
+    aktiv: true
+  };
+  if (isEdit) payload.id = existingId;
+
+  // Disable save-knappen mens vi gemmer
+  const saveBtn = document.getElementById('katSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Gemmer…'; }
+
+  try {
+    let resp;
+    if (isEdit) {
+      resp = await sb.from('produkt_kategorier').update(payload).eq('id', existingId).select();
+    } else {
+      resp = await sb.from('produkt_kategorier').insert(payload).select();
+    }
+    if (resp.error) throw resp.error;
+
+    closeKategoriModal();
+    showToast(isEdit ? 'Kategori gemt' : 'Kategori oprettet', 'success');
+    // Re-load liste
+    window._kategorier = null;
+    await loadKategorier();
+  } catch (err) {
+    showError('Fejl ved gem: ' + (err.message || String(err)));
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Gem ændringer' : 'Opret kategori'; }
+    dbLog('saveKategori fejlede', err.message);
+  }
+}
+
+// Slet kategori (med confirm)
+async function deleteKategori(id, event) {
+  if (!id) return;
+  const kat = (window._kategorier || []).find(k => k.id === id);
+  if (!kat) {
+    showToast('Kategori ikke fundet — genindlæs', 'error');
+    return;
+  }
+
+  const ok = await showConfirm(
+    'Slet kategorien "' + kat.label + '"?\n\nDette kan ikke fortrydes. Eksisterende tilbud der bruger denne kategori vil falde tilbage til "Andet" indtil de gen-redigeres.',
+    event
+  );
+  if (!ok) return;
+
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) { showToast('Supabase ikke klar', 'error'); return; }
+
+  try {
+    const { error } = await sb.from('produkt_kategorier').delete().eq('id', id);
+    if (error) throw error;
+    showToast('Kategori slettet', 'success');
+    window._kategorier = null;
+    await loadKategorier();
+  } catch (err) {
+    showToast('Fejl ved slet: ' + (err.message || String(err)), 'error');
+    dbLog('deleteKategori fejlede', err.message);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────
