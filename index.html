@@ -4,12 +4,26 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.098
+  Version: 1.099
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.098  (2026-04-30)  ⭐ Aktuel — Bredere input-felter på Indstillinger
+  v1.099  (2026-04-30)  ⭐ Aktuel — Design-mockups på PDF'er (canvas API)
+          • Nye helpers: loadImageForCanvas, renderDesignMockup, pdfRenderDesignsForLines
+          • Tilføjet TRYKBILLEDER-sektion på både tilbud-PDF og ordreseddel-PDF
+          • Hver tøjlinje med design uploadet får alle aktive positioner
+            stablet vandret med:
+              - Mockup: tekstil-farvet rektangel med design tegnet i korrekt
+                position+skala (canvas API, 2× density for skarpt PDF-billede)
+              - Position-label over (FORSIDE/BAGSIDE/V. ÆRME/H. ÆRME)
+              - cm-størrelse under (skaleret med scalePercent)
+          • PDF-design vises som "PDF"-placeholder
+          • Page-break automatisk hvis ikke plads
+          • Layout: 2 felter → 50×70mm, 3 felter → 45×63mm, 4 felter → 38×53mm
+            (sleeves halv størrelse for at passe i layout)
+
+  v1.098  (2026-04-30) — Bredere input-felter på Indstillinger
           • Tryk-størrelse input-felter på Indstillinger-siden var for smalle
             (48px) til 2-cifrede tal som "37" og "47" — værdien blev klippet
             af browser-spinneren
@@ -460,7 +474,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.098 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.099 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1838,7 +1852,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.098
+    v1.099
   </div>
 </div>
 
@@ -1931,7 +1945,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.098 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.099 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4794,6 +4808,208 @@ function isDesignContentOutsideBox(design) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// v1.099: Design-mockup rendering til PDF (canvas API)
+// ──────────────────────────────────────────────────────────────────────
+
+// Helper: load image som Promise — bruges i canvas-rendering
+function loadImageForCanvas(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';  // CORS for Supabase Storage
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+    img.src = url;
+  });
+}
+
+// Render et design-mockup til canvas → returnerer dataURL (PNG).
+async function renderDesignMockup(gl, pos, outputW, outputH) {
+  const design = gl.designs?.[pos];
+  if (!design || !design.url) return null;
+
+  const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
+  const W = outputW || (isSleeve ? 140 : 280);
+  const H = outputH || (isSleeve ? 187 : 392);
+
+  const canvas = document.createElement('canvas');
+  // 2× density for skarpt billede i PDF
+  canvas.width  = W * 2;
+  canvas.height = H * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2);
+
+  // Baggrund: tekstil-farve (samme som UI)
+  const colorHexMap = gl.colorHexMap || {};
+  const tekstilFarve = gl.selectedColor
+    ? (colorHexMap[gl.selectedColor] || (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || '#888')
+    : '#888';
+  ctx.fillStyle = tekstilFarve;
+  // Afrunder hjørner lidt for "cool simpelt" look
+  const r = 6;
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(W - r, 0);
+  ctx.quadraticCurveTo(W, 0, W, r);
+  ctx.lineTo(W, H - r);
+  ctx.quadraticCurveTo(W, H, W - r, H);
+  ctx.lineTo(r, H);
+  ctx.quadraticCurveTo(0, H, 0, H - r);
+  ctx.lineTo(0, r);
+  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // Beregn zone-position + størrelse i pixels
+  const zoneLeftPx = (design.position?.x || 0) / 100 * W;
+  const zoneTopPx  = (design.position?.y || 0) / 100 * H;
+  const zoneWPx    = (design.zoneWidthPct  || 80) / 100 * W;
+  const zoneHPx    = (design.zoneHeightPct || 80) / 100 * H;
+
+  // Load design-billede
+  const isImage = (design.type === 'image/png' || design.type === 'image/jpeg' || design.type === 'image/svg+xml');
+  if (!isImage) {
+    // PDF eller andet — vis placeholder
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(zoneLeftPx, zoneTopPx, zoneWPx, zoneHPx);
+    ctx.fillStyle = '#555';
+    ctx.font = `${Math.round(zoneHPx * 0.15)}px Helvetica`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('PDF', zoneLeftPx + zoneWPx/2, zoneTopPx + zoneHPx/2);
+    return canvas.toDataURL('image/png');
+  }
+  let img;
+  try {
+    img = await loadImageForCanvas(design.url);
+  } catch (err) {
+    if (typeof dbLog === 'function') dbLog('renderDesignMockup: kunne ikke loade billede', design.url);
+    return null;
+  }
+
+  // object-fit: contain — skalér billedet for at passe i zonen, bevar aspect-ratio
+  const imgAspect  = img.naturalWidth / img.naturalHeight;
+  const zoneAspect = zoneWPx / zoneHPx;
+  let drawW, drawH, drawX, drawY;
+  if (imgAspect > zoneAspect) {
+    drawW = zoneWPx;
+    drawH = zoneWPx / imgAspect;
+    drawX = zoneLeftPx;
+    drawY = zoneTopPx + (zoneHPx - drawH) / 2;
+  } else {
+    drawH = zoneHPx;
+    drawW = zoneHPx * imgAspect;
+    drawX = zoneLeftPx + (zoneWPx - drawW) / 2;
+    drawY = zoneTopPx;
+  }
+  // Klip rendering til canvas-grænserne
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W, H);
+  ctx.clip();
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
+  ctx.restore();
+
+  return canvas.toDataURL('image/png');
+}
+
+// Bygger en sektion med mockups for alle aktive positioner pr. tøjlinje.
+async function pdfRenderDesignsForLines(doc, garmentLines, startY, margin) {
+  const POS_META = [
+    {key:'front',    title:'Forside'},
+    {key:'back',     title:'Bagside'},
+    {key:'sleeve_l', title:'V. ærme'},
+    {key:'sleeve_r', title:'H. ærme'}
+  ];
+
+  let y = startY;
+  // Find alle linjer der har mindst ét uploadet design
+  const linesWithDesigns = garmentLines.filter(gl => {
+    if (!gl.designs) return false;
+    return POS_META.some(m => gl.designs[m.key]);
+  });
+  if (linesWithDesigns.length === 0) return y;
+
+  // Section-overskrift
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...PDF_COLORS.muted);
+  doc.text('TRYKBILLEDER', margin, y);
+  y += 5;
+
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  for (const gl of linesWithDesigns) {
+    const activePositions = POS_META.filter(m => gl.designs[m.key]);
+    if (activePositions.length === 0) continue;
+
+    // Page-break check (~80mm pr. linje)
+    if (y > pageHeight - 80) {
+      doc.addPage();
+      y = margin;
+    }
+
+    // Produkt-navn
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...PDF_COLORS.text);
+    const prodLabel = `${gl.name||'—'}${gl.sku?' · '+gl.sku:''}${gl.selectedColor?' · '+gl.selectedColor:''}`;
+    doc.text(prodLabel, margin, y);
+    y += 5;
+
+    // Mockup-størrelse i mm — afhænger af antal positioner
+    const N = activePositions.length;
+    let cellW, cellH;
+    if (N <= 2)      { cellW = 50; cellH = 70; }
+    else if (N === 3) { cellW = 45; cellH = 63; }
+    else              { cellW = 38; cellH = 53; }
+
+    const gap = 6; // mm
+    let x = margin;
+    let maxH = 0;
+    for (const m of activePositions) {
+      const isSleeve = (m.key === 'sleeve_l' || m.key === 'sleeve_r');
+      const w = isSleeve ? cellW * 0.5 : cellW;
+      const h = isSleeve ? cellH * 0.5 : cellH;
+
+      // Position-label over mockup
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(7);
+      doc.setTextColor(...PDF_COLORS.muted);
+      doc.text(m.title.toUpperCase(), x + w/2, y + 3, {align:'center'});
+
+      // Mockup-billede
+      const dataUrl = await renderDesignMockup(gl, m.key);
+      if (dataUrl) {
+        doc.addImage(dataUrl, 'PNG', x, y + 5, w, h);
+      }
+
+      // Tekst under mockup: cm-størrelse
+      const design = gl.designs[m.key];
+      const posSize = gl.positions?.[m.key]?.size || (isSleeve ? 'small' : 'large');
+      const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(m.key, posSize) : null;
+      let dimText = '—';
+      if (design && dimCm && typeof design.scalePercent === 'number') {
+        const sc = design.scalePercent / 100;
+        const sw = (dimCm.w * sc);
+        const sh = (dimCm.h * sc);
+        const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.',',');
+        dimText = `${fmt(sw)} × ${fmt(sh)} cm`;
+      }
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...PDF_COLORS.text);
+      doc.text(dimText, x + w/2, y + 5 + h + 3.5, {align:'center'});
+
+      if (h > maxH) maxH = h;
+      x += w + gap;
+    }
+    y += 5 + maxH + 8;
+  }
+
+  return y + 4;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // v1.079: Skaler-ned via slider eller drag-handles
 // ──────────────────────────────────────────────────────────────────────
 function setDesignScale(lineIdx, pos, scalePercent) {
@@ -6421,6 +6637,9 @@ async function generateTilbudPDF() {
       y = doc.lastAutoTable.finalY + 3;
     }
 
+    // v1.099: Tilføj design-mockups (canvas-rendering) efter tryk-tabel
+    y = await pdfRenderDesignsForLines(doc, garmentLinesData, y, margin);
+
     // ── Opstart ──
     if(d.setupTotal > 0) {
       doc.autoTable({
@@ -6696,6 +6915,9 @@ async function generateOrdreseddelPDF() {
       });
       y = doc.lastAutoTable.finalY + 10;
     }
+
+    // v1.099: Tilføj design-mockups (canvas-rendering) efter tryk-tabel
+    y = await pdfRenderDesignsForLines(doc, garmentLinesData, y, margin);
 
     // ── Noter til produktion (tomme linjer til håndskrift) ──
     doc.setFont('helvetica','bold');
