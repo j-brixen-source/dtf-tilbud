@@ -4,12 +4,39 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.111
+  Version: 1.112
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.111  (2026-04-30)  ⭐ Aktuel — Kategori-admin UI: Tilføj/Rediger/Slet
+  v1.112  (2026-04-30)  ⭐ Aktuel — Refactor app: brug DB-kategorier i tilbud
+          • Det STORE refactor — appen bruger nu kategorier fra Supabase i
+            stedet for hardcoded PRODUCT_CATEGORIES + globale trykmål-felter
+          • Kategorier loades nu ved app-start (ikke kun ved klik på Tab 2)
+          • Nye helper-funktioner:
+              - getCategoryByKey(key)
+              - getActiveCategoriesSorted()
+              - getCategoryAllowedPositions(catKey)
+              - getCategorySizes(catKey, posKey)
+              - getCategoryFirstSizeName(catKey, posKey)
+              - findCategorySize(catKey, posKey, sizeName)
+          • detectProductCategory() bruger nu kategoriens detect_keywords i
+            stedet for hardcoded regex
+          • getTrykDimensions/getPrintPrice har ny signatur:
+              (catKey, pos, sizeName) — bruger kategoriens sizes-array
+          • Sizes-dropdown på design-zone viser kategoriens egne sizes
+            (fx "Kasket 11×5 cm · 25 kr") i stedet for hardcoded Lille/Stort/XL
+          • Hvis position kun har 1 size: dropdown skjules (vises som badge)
+          • setProductCategory() resetter sizes når kategori skiftes
+          • Migration ved load: hvis size ikke matcher kategoriens sizes,
+            falder den tilbage til kategoriens første size
+          • Skjult: gamle "Trykmål og priser pr. position"-tabel på Tab 1
+            (HTML beholdt — settings persisteres stadig som fallback)
+          • Behold PRODUCT_CATEGORIES_FALLBACK som safety-net hvis Supabase
+            ikke kan loade
+          • updateAllTrykLabels() gjort til no-op (ingen effekt)
+
+  v1.111  (2026-04-30) — Kategori-admin UI: Tilføj/Rediger/Slet
           • Hver kategori-række har nu "Rediger" + "Slet"-knapper
           • "+ Tilføj kategori"-knap i header på Tab 2
           • Edit-modal (~560px bred, centreret) med:
@@ -611,7 +638,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.111 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.112 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2450,7 +2477,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.111
+    v1.112
   </div>
 </div>
 
@@ -2543,7 +2570,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.111 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.112 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -2609,6 +2636,9 @@
         </table>
 
         <!-- Print-priser + fysiske mål (v1.073: sammenflettet) -->
+        <!-- v1.112: SKJULT — erstattet af kategori-baseret system. HTML beholdt så
+             persistInput() ikke fejler og settings stadig kan loades fra Supabase. -->
+        <div style="display:none" data-legacy="trykmaal-tabel">
         <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">
           Trykmål og priser pr. position
           <span style="font-weight:400;color:var(--muted)" id="trykprisLabel">· Lille ≤10×10 cm · Stort ≤26×35 cm · XL >26×35 cm</span>
@@ -2678,6 +2708,7 @@
             </tr>
           </tbody>
         </table>
+        </div><!-- /trykmaal-tabel (v1.112: skjult) -->
 
         <!-- Setup + rabat -->
         <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:6px">Setup og rabat</div>
@@ -3148,16 +3179,18 @@ window.__getGarments = () => garments;
 window.__setGarments = (arr) => { garments = arr; window.garments = arr; };
 let activePos = {}; // DEPRECATED v1.050 — beholdt som tom for bagudkompatibilitet
 function defaultGarmentLine() {
+  // v1.112: size er nu tom — sættes til kategoriens første size ved første render
+  // (gennem migrateGarmentLineSizes via setProductCategory eller ved render)
   return {
     sku:'', name:'', brand:'', brandFilter:'', brandSearch:'', modelSearch:'',
     costPrice:0, salePrice:0,
     availSizes:[], availColors:[], colorSizeMap:{}, selectedColor:'',
     sizeQtys:{}, manualQty:0,
     positions: {
-      front:    {active:false, size:'large'},
-      back:     {active:false, size:'large'},
-      sleeve_l: {active:false, size:'small'},
-      sleeve_r: {active:false, size:'small'}
+      front:    {active:false, size:''},
+      back:     {active:false, size:''},
+      sleeve_l: {active:false, size:''},
+      sleeve_r: {active:false, size:''}
     },
     // v1.076: Uploadet kunde-design pr. position. null hvis intet uploadet.
     // Object: {url, filename, size, type, width, height, uploadedAt}
@@ -3256,9 +3289,17 @@ function switchSettingsTab(tabKey) {
   // Persistér valg
   try { sessionStorage.setItem('settings_tab', tabKey); } catch(_) {}
 
-  // v1.110: Lazy-load kategorier ved første åbning af Tab 2
-  if (tabKey === 'kategorier' && !window._kategorier) {
-    loadKategorier();
+  // v1.110/v1.112: Lazy-load kategorier ved første åbning af Tab 2
+  // Hvis allerede loadet (fra app-init), bare render listen
+  if (tabKey === 'kategorier') {
+    if (window._kategorier === null || !Array.isArray(window._kategorier)) {
+      loadKategorier();
+    } else {
+      // Allerede loadet — bare opdater count + render
+      const countEl = document.getElementById('katListCount');
+      if (countEl) countEl.textContent = ' (' + window._kategorier.length + ')';
+      renderKategorierList();
+    }
   }
 }
 
@@ -3270,13 +3311,14 @@ function switchSettingsTab(tabKey) {
 window._kategorier = null;
 
 async function loadKategorier() {
+  // v1.112: Data hentes altid (kaldes ved app-start), uanset om Tab 2 er åbnet
+  // DOM-rendering sker kun hvis container findes (Tab 2 har været åbnet)
   const container = document.getElementById('katListContainer');
   const countEl = document.getElementById('katListCount');
-  if (!container) return;
 
   const sb = (typeof getSB === 'function') ? getSB() : null;
   if (!sb) {
-    container.innerHTML = '<div class="kat-list-error">Supabase ikke klar — kan ikke hente kategorier. Log ind igen?</div>';
+    if (container) container.innerHTML = '<div class="kat-list-error">Supabase ikke klar — kan ikke hente kategorier. Log ind igen?</div>';
     return;
   }
 
@@ -3291,10 +3333,10 @@ async function loadKategorier() {
 
     window._kategorier = data || [];
     if (countEl) countEl.textContent = ' (' + window._kategorier.length + ')';
-    renderKategorierList();
+    if (container) renderKategorierList();
     dbLog('Kategorier indlæst', window._kategorier.length + ' rækker');
   } catch (err) {
-    container.innerHTML = '<div class="kat-list-error">Fejl ved indlæsning: ' + escapeHtml(err.message || String(err)) + '</div>';
+    if (container) container.innerHTML = '<div class="kat-list-error">Fejl ved indlæsning: ' + escapeHtml(err.message || String(err)) + '</div>';
     dbLog('loadKategorier fejlede', err.message);
   }
 }
@@ -6055,8 +6097,10 @@ async function renderDesignMockup(gl, pos, outputW, outputH) {
 
   // v1.100: Brug SAMME default-beregning som UI — fixer position-fallback (var 0,0)
   // og zone-størrelse-fallback (var 80%) som ikke matchede UI
-  const posSize = gl.positions?.[pos]?.size || (isSleeve ? 'small' : 'large');
-  const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(pos, posSize) : null;
+  // v1.112: catKey skal med så vi henter sizes fra rigtig kategori
+  const _catKey = getProductCategory(gl);
+  const posSize = gl.positions?.[pos]?.size || getCategoryFirstSizeName(_catKey, pos) || (isSleeve ? 'small' : 'large');
+  const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(_catKey, pos, posSize) : null;
   const zonePct = (typeof getTrykZonePercent === 'function' && dimCm) ? getTrykZonePercent(pos, dimCm) : null;
   const defPos = (zonePct && typeof getDefaultDesignPosition === 'function')
     ? getDefaultDesignPosition(pos, zonePct, dimCm)
@@ -6214,8 +6258,9 @@ async function pdfRenderMockupsForOneLine(doc, gl, startY, margin) {
 
     // Tekst under mockup: cm-størrelse
     const design = gl.designs[m.key];
-    const posSize = gl.positions?.[m.key]?.size || (isSleeve ? 'small' : 'large');
-    const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(m.key, posSize) : null;
+    const _catKeyPDF = getProductCategory(gl);
+    const posSize = gl.positions?.[m.key]?.size || getCategoryFirstSizeName(_catKeyPDF, m.key) || (isSleeve ? 'small' : 'large');
+    const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(_catKeyPDF, m.key, posSize) : null;
     let dimText = '—';
     if (design && dimCm && typeof design.scalePercent === 'number') {
       const sc = design.scalePercent / 100;
@@ -6254,8 +6299,9 @@ function setDesignScale(lineIdx, pos, scalePercent) {
 function updateDesignFieldDisplay(lineIdx, pos) {
   const gl = garmentLinesData[lineIdx]; if (!gl) return;
   const design = gl.designs?.[pos]; if (!design) return;
-  const posSize = gl.positions?.[pos]?.size || ((pos === 'sleeve_l' || pos === 'sleeve_r') ? 'small' : 'large');
-  const _dimCm = getTrykDimensions(pos, posSize);
+  const _catKey = getProductCategory(gl);
+  const posSize = gl.positions?.[pos]?.size || getCategoryFirstSizeName(_catKey, pos) || ((pos === 'sleeve_l' || pos === 'sleeve_r') ? 'small' : 'large');
+  const _dimCm = getTrykDimensions(_catKey, pos, posSize);
   if (!_dimCm || !_dimCm.w || !_dimCm.h) return;
   const sc = (design.scalePercent || 100) / 100;
   // 1) Opdater zone-størrelse
@@ -6372,8 +6418,10 @@ function adjustDesignDim(lineIdx, pos, dim, delta, event) {
   const design = gl.designs?.[pos]; if (!design) return;
   // v1.095: Hent korrekt size for DEN specifikke position (ikke gl.size, som ikke findes).
   // Hver position har sin egen size i gl.positions[pos].size.
-  const posSize = gl.positions?.[pos]?.size || ((pos === 'sleeve_l' || pos === 'sleeve_r') ? 'small' : 'large');
-  const _dimCm = getTrykDimensions(pos, posSize);
+  // v1.112: catKey skal bruges så vi henter sizes fra rigtig kategori
+  const _catKey = getProductCategory(gl);
+  const posSize = gl.positions?.[pos]?.size || getCategoryFirstSizeName(_catKey, pos) || ((pos === 'sleeve_l' || pos === 'sleeve_r') ? 'small' : 'large');
+  const _dimCm = getTrykDimensions(_catKey, pos, posSize);
   if (!_dimCm || !_dimCm.w || !_dimCm.h) return;
   // Nuværende skalerede cm
   const sc = (design.scalePercent || 100) / 100;
@@ -6563,19 +6611,14 @@ function toggleTrykSection(lineIdx) {
   if(sec) sec.classList.toggle('expanded', !!gl.trykExpanded);
 }
 
-// v1.072: Hent fysiske mål (cm) for en trykkategori. Returnerer {w, h} eller null hvis ikke sat.
-// Sleeves bruger samme mål uanset position. Front/back deler samme mål pr. størrelse.
-function getTrykDimensions(pos, size) {
-  const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
-  if (isSleeve) {
-    const w = parseFloat(document.getElementById('tryk_w_sleeve')?.value);
-    const h = parseFloat(document.getElementById('tryk_h_sleeve')?.value);
-    return (w && h) ? {w, h} : null;
-  }
-  // front/back bruger samme mål pr. kategori (small/large/xl)
-  const sel = size || 'large';
-  const w = parseFloat(document.getElementById(`tryk_w_${sel}`)?.value);
-  const h = parseFloat(document.getElementById(`tryk_h_${sel}`)?.value);
+// v1.112: Hent fysiske mål (cm) for en kategori-position-størrelse.
+// Ny signatur: (catKey, pos, sizeName) — bruger kategoriens egne sizes.
+// Returnerer {w, h} eller null hvis ikke fundet.
+function getTrykDimensions(catKey, pos, sizeName) {
+  const sz = findCategorySize(catKey, pos, sizeName);
+  if (!sz) return null;
+  const w = parseFloat(sz.w);
+  const h = parseFloat(sz.h);
   return (w && h) ? {w, h} : null;
 }
 
@@ -6586,51 +6629,16 @@ function formatTrykDimensions(dim) {
   return `${fmt(dim.w)} × ${fmt(dim.h)} cm`;
 }
 
-// v1.072: Opdatér label på trykprisliste-overskrift + dropdown-options + design-zone-badges
-// Kaldes når et tryk-mål-felt ændres
-// v1.073: Opdater også read-only spans på bagside + højre-ærme
+// v1.112: Gjort til no-op — den gamle Trykmål-tabel er skjult og opdateres ikke længere
 function updateAllTrykLabels() {
-  const small = formatTrykDimensions(getTrykDimensions('front', 'small'));
-  const large = formatTrykDimensions(getTrykDimensions('front', 'large'));
-  const xl    = formatTrykDimensions(getTrykDimensions('front', 'xl'));
-  const sleeve = formatTrykDimensions(getTrykDimensions('sleeve_l', 'small'));
-
-  // Opdater label-tekst over trykpris-tabellen
-  const label = document.getElementById('trykprisLabel');
-  if (label) {
-    const parts = [];
-    if (small) parts.push(`Lille ≤${small}`);
-    if (large) parts.push(`Stort ≤${large}`);
-    if (xl)    parts.push(`Ekstra stort ≤${xl}`);
-    label.textContent = parts.length ? '· ' + parts.join(' · ') : '';
-  }
-
-  // v1.073: Opdater read-only spans (bagside + højre-ærme synker med forside/V-ærme)
-  const dimSmallEl  = document.getElementById('dim_ro_small');
-  const dimLargeEl  = document.getElementById('dim_ro_large');
-  const dimXlEl     = document.getElementById('dim_ro_xl');
-  const dimSleeveEl = document.getElementById('dim_ro_sleeve');
-  if (dimSmallEl)  dimSmallEl.textContent  = small  || '—';
-  if (dimLargeEl)  dimLargeEl.textContent  = large  || '—';
-  if (dimXlEl)     dimXlEl.textContent     = xl     || '—';
-  if (dimSleeveEl) dimSleeveEl.textContent = sleeve || '—';
-
-  // Re-render alle tøjlinjer så design-zone-badges + dropdown-options opdateres
-  if (typeof renderGarmentLines === 'function' && typeof garmentLinesData !== 'undefined') {
-    renderGarmentLines();
-  }
+  // Behold tom funktion så eksisterende onchange-handlers ikke fejler
 }
 
-function getPrintPrice(pos, size) {
-  const v={
-    front:    {small:+document.getElementById('p_front_small').value,   large:+document.getElementById('p_front_large').value,   xl:+document.getElementById('p_front_xl').value},
-    back:     {small:+document.getElementById('p_back_small').value,    large:+document.getElementById('p_back_large').value,    xl:+document.getElementById('p_back_xl').value},
-    sleeve_l: {small:+document.getElementById('p_sleeve_l_small').value},
-    sleeve_r: {small:+document.getElementById('p_sleeve_r_small').value}
-  };
-  if(pos==='sleeve_l'||pos==='sleeve_r') return {price:v[pos].small,size:'small'};
-  const sel = size || 'large';
-  return {price:v[pos][sel]||0, size:sel};
+// v1.112: Hent pris for en kategori-position-størrelse. Returnerer {price, size}.
+function getPrintPrice(catKey, pos, sizeName) {
+  const sz = findCategorySize(catKey, pos, sizeName);
+  if (!sz) return { price: 0, size: '' };
+  return { price: parseFloat(sz.price) || 0, size: sz.name };
 }
 
 // Beregn tryk for én linje
@@ -6638,16 +6646,17 @@ function calcLineTryk(gl, lineQty) {
   const out = {lines: [], total: 0, numPos: 0};
   if(!gl.positions || !lineQty) return out;
   const posName = {front:'Forside', back:'Bagside', sleeve_l:'V. ærme', sleeve_r:'H. ærme'};
-  const sizeName = {small:'Lille', large:'Stort', xl:'Ekstra stort'};
+  // v1.112: brug kategoriens egne size-navne (ikke hardcoded small/large/xl)
+  const catKey = getProductCategory(gl);
   ['front','back','sleeve_l','sleeve_r'].forEach(p => {
     const pp = gl.positions[p];
     if(!pp || !pp.active) return;
-    const {price, size} = getPrintPrice(p, pp.size);
+    const {price, size} = getPrintPrice(catKey, p, pp.size);
     const tot = price * lineQty;
     out.lines.push({
       pos: p,
       size,
-      label: `${posName[p]} – ${sizeName[size]} × ${lineQty} stk`,
+      label: `${posName[p]} – ${size} × ${lineQty} stk`,
       price,
       total: tot
     });
@@ -6663,38 +6672,109 @@ function calcLineTryk(gl, lineQty) {
 
 // Hver kategori definerer hvilke positioner der er TILLADT.
 // Positioner der ikke er i 'allowed' vises som inaktive med forklaring.
-const PRODUCT_CATEGORIES = {
-  tshirt:  { label: 'T-shirt / Polo',          allowed: ['front','back','sleeve_l','sleeve_r'] },
-  hoodie:  { label: 'Hoodie / Sweatshirt',     allowed: ['front','back','sleeve_l','sleeve_r'] },
-  jacket:  { label: 'Jakke / Vest (uden ærmer)', allowed: ['front','back'] },
-  apron:   { label: 'Forklæde',                allowed: ['front'] },
-  bag:     { label: 'Taske',                   allowed: ['front'] },
-  cap:     { label: 'Kasket / Hat',            allowed: ['front'] },
-  napkin:  { label: 'Dækserviette / Tekstil',  allowed: ['front'] },
-  other:   { label: 'Andet (alle 4 sider)',    allowed: ['front','back','sleeve_l','sleeve_r'] },
+// v1.112: PRODUCT_CATEGORIES_FALLBACK — kun bruges hvis Supabase-load fejler.
+// Den autoritative kilde er nu tabellen produkt_kategorier (loaded i window._kategorier).
+const PRODUCT_CATEGORIES_FALLBACK = {
+  tshirt:    { key:'tshirt',    label:'T-shirt / Polo',    sort_order:10, detect_keywords:['tshirt','t-shirt','tee','polo','tank','singlet'], positions:{front:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25},{name:'Stort',w:26,h:35,price:35}]},back:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25},{name:'Stort',w:26,h:35,price:35}]},sleeve_l:{enabled:true,sizes:[{name:'Ærme',w:8,h:8,price:25}]},sleeve_r:{enabled:true,sizes:[{name:'Ærme',w:8,h:8,price:25}]}} },
+  hoodie:    { key:'hoodie',    label:'Hoodie / Sweatshirt', sort_order:20, detect_keywords:['hoodie','hood','sweatshirt','sweat'], positions:{front:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},back:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},sleeve_l:{enabled:true,sizes:[{name:'Ærme',w:8,h:8,price:25}]},sleeve_r:{enabled:true,sizes:[{name:'Ærme',w:8,h:8,price:25}]}} },
+  jacket:    { key:'jacket',    label:'Jakke / Vest',      sort_order:30, detect_keywords:['jakke','jacket','vest','coat','parka','gilet'], positions:{front:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},back:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  totebag:   { key:'totebag',   label:'Totebag / Taske',   sort_order:40, detect_keywords:['totebag','tote','taske','backpack','gymsac','bag'], positions:{front:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},back:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  apron:     { key:'apron',     label:'Forklæde',          sort_order:50, detect_keywords:['forklæde','apron'], positions:{front:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},back:{enabled:false,sizes:[]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  cap:       { key:'cap',       label:'Kasket / Hat',      sort_order:60, detect_keywords:['kasket','cap','hue','beanie','hat'], positions:{front:{enabled:true,sizes:[{name:'Kasket',w:10,h:5,price:25}]},back:{enabled:false,sizes:[]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  napkin:    { key:'napkin',    label:'Dækserviette / Tekstil', sort_order:70, detect_keywords:['dækserviette','napkin','håndklæde','towel'], positions:{front:{enabled:true,sizes:[{name:'Stort',w:26,h:35,price:35}]},back:{enabled:false,sizes:[]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  pants:     { key:'pants',     label:'Bukser / Shorts',   sort_order:80, detect_keywords:['pants','bukser','trousers','shorts','jogger'], positions:{front:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25}]},back:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25}]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  accessory: { key:'accessory', label:'Tilbehør',          sort_order:90, detect_keywords:['towel','håndklæde','scarf','tørklæde','tie','sock','glove'], positions:{front:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25}]},back:{enabled:false,sizes:[]},sleeve_l:{enabled:false,sizes:[]},sleeve_r:{enabled:false,sizes:[]}} },
+  other:     { key:'other',     label:'Andet',             sort_order:100, detect_keywords:[], positions:{front:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25},{name:'Stort',w:26,h:35,price:35}]},back:{enabled:true,sizes:[{name:'Lille',w:10,h:10,price:25},{name:'Stort',w:26,h:35,price:35}]},sleeve_l:{enabled:true,sizes:[{name:'Ærme',w:8,h:8,price:25}]},sleeve_r:{enabled:true,sizes:[{name:'Ærme',w:8,h:8,price:25}]}} }
 };
+
+// v1.112: Helper-funktioner — find kategori og dens data fra DB-cache eller fallback
+function getCategoryByKey(key) {
+  if (!key) return null;
+  const cats = window._kategorier;
+  if (Array.isArray(cats) && cats.length > 0) {
+    const found = cats.find(k => k.key === key);
+    if (found) return found;
+  }
+  // Fallback hvis DB ikke loadet
+  return PRODUCT_CATEGORIES_FALLBACK[key] || null;
+}
+
+function getActiveCategoriesSorted() {
+  if (Array.isArray(window._kategorier) && window._kategorier.length > 0) {
+    return window._kategorier.slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  }
+  return Object.values(PRODUCT_CATEGORIES_FALLBACK).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+}
+
+function getCategoryAllowedPositions(catKey) {
+  const kat = getCategoryByKey(catKey);
+  if (!kat || !kat.positions) return ['front', 'back', 'sleeve_l', 'sleeve_r'];
+  return ['front', 'back', 'sleeve_l', 'sleeve_r'].filter(p => kat.positions[p] && kat.positions[p].enabled);
+}
+
+function getCategorySizes(catKey, posKey) {
+  const kat = getCategoryByKey(catKey);
+  if (!kat || !kat.positions) return [];
+  const p = kat.positions[posKey];
+  if (!p || !p.enabled || !Array.isArray(p.sizes)) return [];
+  return p.sizes;
+}
+
+function getCategoryFirstSizeName(catKey, posKey) {
+  const sizes = getCategorySizes(catKey, posKey);
+  return sizes.length > 0 ? sizes[0].name : '';
+}
+
+function findCategorySize(catKey, posKey, sizeName) {
+  const sizes = getCategorySizes(catKey, posKey);
+  if (sizes.length === 0) return null;
+  return sizes.find(s => s.name === sizeName) || sizes[0];
+}
+
+// Migration: hvis gl.positions[pos].size ikke matcher kategoriens sizes,
+// reset til kategoriens første size (kaldes ved kategori-skift + når tilbud loades)
+function migrateGarmentLineSizes(gl) {
+  if (!gl || !gl.positions) return;
+  const catKey = getProductCategory(gl);
+  ['front', 'back', 'sleeve_l', 'sleeve_r'].forEach(pos => {
+    if (!gl.positions[pos]) return;
+    const sizes = getCategorySizes(catKey, pos);
+    if (sizes.length === 0) {
+      gl.positions[pos].size = '';
+      return;
+    }
+    const currentSize = gl.positions[pos].size;
+    const found = sizes.some(s => s.name === currentSize);
+    if (!found) {
+      gl.positions[pos].size = sizes[0].name;
+    }
+  });
+}
 
 // Smart-default: gæt produktkategori ud fra navn og product_type
 function detectProductCategory(gl) {
   const nameRaw = (gl.name || '').toLowerCase();
   const typeRaw = (gl.product_type || gl.productType || '').toLowerCase();
   const text = nameRaw + ' ' + typeRaw;
-  // Rækkefølge er vigtig — mest specifikke først
-  if (/forkl[æa]de|apron/.test(text)) return 'apron';
-  if (/taske|tote|backpack|gymsac|bag\b/.test(text)) return 'bag';
-  if (/d[æa]kserv|napkin|h[åa]ndkl[æa]de|towel/.test(text)) return 'napkin';
-  if (/kasket|cap\b|h[au]e\b|beanie|hat\b/.test(text)) return 'cap';
-  if (/hoodie|hood\b|sweatshirt|sweat\b/.test(text)) return 'hoodie';
-  if (/vest\b|gilet|bodywarmer/.test(text)) return 'jacket';
-  if (/jakke|jacket|coat\b|parka/.test(text)) return 'jacket';
-  if (/polo/.test(text)) return 'tshirt';
-  if (/t-?shirt|tee\b|tank\b|singlet/.test(text)) return 'tshirt';
-  return 'other'; // default: tillad alle 4 sider
+
+  const cats = getActiveCategoriesSorted();
+  // Iterér kategorier i sort_order — første der matcher en keyword vinder
+  // 'other' har tomme keywords og bliver derfor ikke matched (kun fallback)
+  for (const cat of cats) {
+    if (!cat || cat.key === 'other') continue;
+    const kws = Array.isArray(cat.detect_keywords) ? cat.detect_keywords : [];
+    for (const kw of kws) {
+      if (kw && text.indexOf(String(kw).toLowerCase()) !== -1) {
+        return cat.key;
+      }
+    }
+  }
+  return 'other';
 }
 
-// Hent kategori for en gl (manuel override > smart-default)
+// Hent kategori-key for en gl (manuel override > smart-default)
 function getProductCategory(gl) {
-  if (gl.productCategoryOverride && PRODUCT_CATEGORIES[gl.productCategoryOverride]) {
+  if (gl && gl.productCategoryOverride && getCategoryByKey(gl.productCategoryOverride)) {
     return gl.productCategoryOverride;
   }
   return detectProductCategory(gl);
@@ -6703,15 +6783,17 @@ function getProductCategory(gl) {
 // Skift kategori for en linje (kaldt fra dropdown)
 function setProductCategory(lineIdx, categoryKey) {
   const gl = garmentLinesData[lineIdx]; if (!gl) return;
-  if (!PRODUCT_CATEGORIES[categoryKey]) return;
+  if (!getCategoryByKey(categoryKey)) return;
   gl.productCategoryOverride = categoryKey;
-  // Hvis nogle aktive positioner ikke længere er tilladt, deaktiver dem
-  const allowed = PRODUCT_CATEGORIES[categoryKey].allowed;
+  // Deaktiver positions der ikke er tilladt for denne kategori
+  const allowed = getCategoryAllowedPositions(categoryKey);
   ['front','back','sleeve_l','sleeve_r'].forEach(pos => {
     if (gl.positions?.[pos]?.active && !allowed.includes(pos)) {
       gl.positions[pos].active = false;
     }
   });
+  // Migration: reset sizes så de matcher kategoriens sizes
+  migrateGarmentLineSizes(gl);
   renderGarmentLines();
   recalc();
 }
@@ -6720,10 +6802,10 @@ function setProductCategory(lineIdx, categoryKey) {
 function buildLineTrykSection(i, gl) {
   const positions = gl.positions || defaultGarmentLine().positions;
   const expanded = !!gl.trykExpanded;
-  // v1.107: Bestem kategori (smart-default med override-mulighed)
+  // v1.107/v1.112: Bestem kategori (smart-default med override-mulighed) — fra DB
   const categoryKey = getProductCategory(gl);
-  const category = PRODUCT_CATEGORIES[categoryKey];
-  const allowedPositions = category.allowed;
+  const category = getCategoryByKey(categoryKey);
+  const allowedPositions = getCategoryAllowedPositions(categoryKey);
   const posMeta = [
     {key:'front',    title:'Forside',  short:'FORSIDE',  type:'front'},
     {key:'back',     title:'Bagside',  short:'BAGSIDE',  type:'back'},
@@ -6744,35 +6826,38 @@ function buildLineTrykSection(i, gl) {
     : '#888';
 
   const zones = posMeta.map(m => {
-    const pp = positions[m.key] || {active:false, size: (m.type==='sleeve') ? 'small' : 'large'};
+    // v1.112: Hent kategoriens sizes for denne position (kan være tomt array)
+    const catSizes = getCategorySizes(categoryKey, m.key);
+    const pp = positions[m.key] || {active:false, size: (catSizes[0] && catSizes[0].name) || ''};
     const isActive = !!pp.active;
-    const size = pp.size || ((m.type==='sleeve') ? 'small' : 'large');
-    const priceInfo = getPrintPrice(m.key, size);
-    const hasSizeControl = (m.type !== 'sleeve');
+    // Sikr at size er en gyldig name fra kategoriens sizes — ellers fallback til første
+    let size = pp.size;
+    if (!size || !catSizes.some(s => s.name === size)) {
+      size = (catSizes[0] && catSizes[0].name) || '';
+    }
+    const priceInfo = getPrintPrice(categoryKey, m.key, size);
+    // v1.112: hasSizeControl = vis dropdown kun hvis >1 sizes (1 size → ingen dropdown)
+    const hasSizeControl = (catSizes.length > 1);
     // v1.092: dpiInfo og design skal beregnes tidligt fordi dim-badge nu inkluderer DPI
     const design = gl.designs?.[m.key];
-    const dpiInfo = (isActive && design) ? getDesignDpi(design, getTrykDimensions(m.key, size)) : null;
+    const dpiInfo = (isActive && design) ? getDesignDpi(design, getTrykDimensions(categoryKey, m.key, size)) : null;
     const dpiBadgeForDim = (isActive && design && dpiInfo)
       ? `<span class="design-zone-dpi dpi-${dpiInfo.level}" style="margin-right:10px;font-size:13px">${dpiInfo.dpi} DPI</span>`
       : '';
-    // v1.072: dynamiske cm-mål til både dropdown-options og badge under feltet
-    const dimSmall = formatTrykDimensions(getTrykDimensions(m.key, 'small'));
-    const dimLarge = formatTrykDimensions(getTrykDimensions(m.key, 'large'));
-    const dimXl    = formatTrykDimensions(getTrykDimensions(m.key, 'xl'));
-    const currentDim = formatTrykDimensions(getTrykDimensions(m.key, size));
-    // v1.090: Pris pr. størrelse i dropdown-options så pris+størrelse er samme sted
-    const priceSmall = getPrintPrice(m.key, 'small').price;
-    const priceLarge = getPrintPrice(m.key, 'large').price;
-    const priceXl    = getPrintPrice(m.key, 'xl').price;
-    const optSmall = `Lille${dimSmall ? ' '+dimSmall : ''}${priceSmall ? ' · '+fmtNum(priceSmall)+' kr/stk' : ''}`;
-    const optLarge = `Stort${dimLarge ? ' '+dimLarge : ''}${priceLarge ? ' · '+fmtNum(priceLarge)+' kr/stk' : ''}`;
-    const optXl    = `Ekstra stort${dimXl ? ' '+dimXl : ''}${priceXl ? ' · '+fmtNum(priceXl)+' kr/stk' : ''}`;
+    // v1.112: Dropdown-options kommer nu fra kategoriens sizes (ikke hardcoded small/large/xl)
+    const currentDim = formatTrykDimensions(getTrykDimensions(categoryKey, m.key, size));
+    const sizeOptionsHtml = catSizes.map(sz => {
+      const dim = formatTrykDimensions({w: sz.w, h: sz.h});
+      const dimTxt = dim ? ' ' + dim : '';
+      const priceTxt = sz.price ? ' · ' + fmtNum(sz.price) + ' kr/stk' : '';
+      const safeName = String(sz.name || '').replace(/"/g, '&quot;');
+      const selAttr = (sz.name === size) ? 'selected' : '';
+      return `<option value="${safeName}" ${selAttr}>${escapeHtml(sz.name)}${dimTxt}${priceTxt}</option>`;
+    }).join('');
     const sizeSelect = hasSizeControl ? `
       <div class="design-zone-size" onclick="event.stopPropagation()">
         <select onchange="setLinePosSize(${i}, '${m.key}', this.value)">
-          <option value="small" ${size==='small' ? 'selected':''}>${optSmall}</option>
-          <option value="large" ${size==='large' ? 'selected':''}>${optLarge}</option>
-          <option value="xl"    ${size==='xl'    ? 'selected':''}>${optXl}</option>
+          ${sizeOptionsHtml}
         </select>
       </div>` : '';
     const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
@@ -6780,7 +6865,7 @@ function buildLineTrykSection(i, gl) {
     // v1.081: Hvis design uploadet, vis SKALERET cm-størrelse (max × scale%)
     // v1.088: Vis kun den faktiske størrelse — ingen "(af X×Y)"-suffix
     // v1.089: Når design uploadet, vis dim som klikbare bredde/højde med ↑/↓-knapper
-    const _dimCm = getTrykDimensions(m.key, size);  // lokal — undgår clash med senere dimCm
+    const _dimCm = getTrykDimensions(categoryKey, m.key, size);  // lokal — undgår clash med senere dimCm
     let dimBadgeHtml = '';
     const _designForDim = gl.designs?.[m.key];
     if (isActive && _designForDim && _dimCm && typeof _designForDim.scalePercent === 'number') {
@@ -6829,7 +6914,8 @@ function buildLineTrykSection(i, gl) {
 
     let boxClick, boxDragOver, boxDragLeave, boxDrop, boxStyle, boxInner, deactivateBtn;
     // v1.077: Beregn tryk-zone proportional + default-position
-    const dimCm = getTrykDimensions(m.key, size);
+    // v1.112: brug categoryKey
+    const dimCm = getTrykDimensions(categoryKey, m.key, size);
     const zonePct = getTrykZonePercent(m.key, dimCm);
     // v1.107: Ny tilstand 0 — position ikke tilladt for denne produktkategori
     const isAllowed = allowedPositions.includes(m.key);
@@ -7029,8 +7115,8 @@ function buildLineTrykSection(i, gl) {
         <div class="product-category-row">
           <label>Produkttype:</label>
           <select onchange="setProductCategory(${i}, this.value)">
-            ${Object.entries(PRODUCT_CATEGORIES).map(([key, c]) =>
-              `<option value="${key}" ${key === categoryKey ? 'selected' : ''}>${c.label}</option>`
+            ${getActiveCategoriesSorted().map(c =>
+              `<option value="${escapeHtml(c.key)}" ${c.key === categoryKey ? 'selected' : ''}>${escapeHtml(c.label || c.key)}</option>`
             ).join('')}
           </select>
           ${gl.productCategoryOverride
@@ -8615,6 +8701,15 @@ function onAuthSuccess() {
   // v1.068: Hent globale settings fra Supabase + start realtime-subscription
   loadSettingsFromSupabase().then(() => {
     subscribeToSettingsChanges();
+  });
+  // v1.112: Hent produkt-kategorier fra Supabase ved app-start (ikke kun ved Tab 2-klik).
+  // Re-render tøjlinjer når kategorier er klar så dropdown viser kategoriens sizes.
+  loadKategorier().then(() => {
+    if (typeof garmentLinesData !== 'undefined' && Array.isArray(garmentLinesData)) {
+      garmentLinesData.forEach(gl => migrateGarmentLineSizes(gl));
+    }
+    if (typeof renderGarmentLines === 'function') renderGarmentLines();
+    if (typeof recalc === 'function') recalc();
   });
   // v1.061: Startsiden er nu Nyt tilbud — sørg for at panel-init køres
   // (renderGarmentLines + recalc) nu hvor panelet allerede har klassen "active"
