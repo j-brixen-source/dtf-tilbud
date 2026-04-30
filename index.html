@@ -4,12 +4,28 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.087
+  Version: 1.089
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.087  (2026-04-30)  ⭐ Aktuel — Justeringer fra John
+  v1.089  (2026-04-30)  ⭐ Aktuel — ±1 cm-knapper på design-størrelse
+          • Dim-tekst under feltet bliver interaktiv når design uploadet:
+            "13 × 17 cm" → klik op/ned-pile på bredde og højde
+          • Aspect-ratio låst: ændring af bredde justerer højde proportionalt
+          • Min 30%, max 100% (samme som slider)
+          • Knapper deaktiveres ved min/max
+          • Slider og dim-knapper synkroniseret automatisk
+
+  v1.088  (2026-04-30) — Felter endnu større + center-pile + cleaner labels
+          • Felt-bokse: 225×315 → 338×473 (front/back), 112×150 → 168×225 (sleeves)
+          • Gap mellem felter: 12px → 50px (plads til action-knapper)
+          • Min-height: 470px → 640px
+          • Center-knap-ikon: nu 4 pile pegende ind mod centrum
+          • Dim-tekst under feltet: kun "13 × 17 cm" (ingen "(af 26 × 35)")
+          • Forberedt til ±1 cm-knapper på tryk-størrelse (kommer i v1.089)
+
+  v1.087  (2026-04-30) — Justeringer fra John (px væk, snap, center-knap)
           • px-dimensioner fjernet helt fra info under feltet (kun cm)
           • Default position-logik: kun "Lille" (≤12×12 cm) på forside
             placeres øverst-højre. Stort/XL placeres center-ned ligesom bagside
@@ -370,7 +386,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.087 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.089 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -660,7 +676,8 @@
   /* v1.070: Design-zoner — billed-felter pr. trykside */
   .design-zones {
     display: flex;
-    gap: 12px;
+    /* v1.088: 50px gap så der er plads til action-knapper til højre for hvert felt */
+    gap: 50px;
     align-items: flex-end;
     flex-wrap: wrap;
     padding: 10px 0;
@@ -670,8 +687,8 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.086: bump til 470px for at rumme 315px tall felt (50% større) + alle infolinjer */
-    min-height: 470px;
+    /* v1.088: bump til 640px for at rumme 473px tall felt (50% større igen) + alle infolinjer */
+    min-height: 640px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -693,9 +710,9 @@
     background-repeat: no-repeat;
     overflow: hidden;
   }
-  .design-zone-box.front  { width: 225px; height: 315px; }
-  .design-zone-box.back   { width: 225px; height: 315px; }
-  .design-zone-box.sleeve { width: 112px; height: 150px; }
+  .design-zone-box.front  { width: 338px; height: 473px; }
+  .design-zone-box.back   { width: 338px; height: 473px; }
+  .design-zone-box.sleeve { width: 168px; height: 225px; }
   /* Inaktiv: faded + plus-symbol */
   .design-zone-box:not(.active):not(.disabled) { opacity: 0.55; }
   .design-zone-box:not(.active):not(.disabled):hover { opacity: 0.85; border-color: rgba(0,0,0,0.3); }
@@ -755,12 +772,88 @@
     line-height: 14px;
   }
   /* v1.072: Cm-mål badge under aktive felter */
+  /* v1.089: Interaktiv med ↑/↓-knapper på bredde/højde (kun når design uploadet) */
   .design-zone-dim {
-    font-size: 9px;
+    font-size: 11px;
     color: var(--muted);
-    margin-top: 2px;
-    height: 12px;
-    line-height: 12px;
+    margin-top: 4px;
+    min-height: 22px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  .design-zone-dim.has-controls {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .design-zone-dim .dim-num-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 2px;
+    border-radius: 3px;
+  }
+  .design-zone-dim .dim-num-group:hover {
+    background: rgba(0,0,0,0.04);
+  }
+  .design-zone-dim .dim-num {
+    min-width: 22px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .design-zone-dim .dim-arrows {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .design-zone-dim .dim-arrow-btn {
+    width: 14px;
+    height: 9px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border);
+    background: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    color: var(--muted);
+    transition: all 0.1s;
+  }
+  .design-zone-dim .dim-arrow-btn:first-child {
+    border-radius: 3px 3px 0 0;
+    border-bottom: none;
+  }
+  .design-zone-dim .dim-arrow-btn:last-child {
+    border-radius: 0 0 3px 3px;
+  }
+  .design-zone-dim .dim-arrow-btn:hover {
+    background: #f0f4f8;
+    color: #185FA5;
+    border-color: #185FA5;
+  }
+  .design-zone-dim .dim-arrow-btn:active {
+    background: #e0e8f0;
+  }
+  .design-zone-dim .dim-arrow-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+  .design-zone-dim .dim-arrow-btn svg {
+    width: 8px;
+    height: 8px;
+  }
+  .design-zone-dim .dim-x {
+    color: var(--muted);
+    margin: 0 2px;
+  }
+  .design-zone-dim .dim-unit {
+    color: var(--muted);
+    margin-left: 4px;
+    font-weight: 400;
   }
   /* v1.076: Drag-and-drop highlight */
   .design-zone-box.drag-over {
@@ -1043,8 +1136,8 @@
      ────────────────────────────────────────────────────────── */
   .design-zone-actions {
     position: absolute;
-    top: 30px;
-    right: -34px;
+    top: 8px;
+    right: -38px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -1621,7 +1714,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.087
+    v1.089
   </div>
 </div>
 
@@ -1714,7 +1807,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.087 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.089 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4497,9 +4590,9 @@ function isDesignContentOutsideBox(design) {
   // Felt-boks dimensioner i px — sleeves er 75×100, front/back er 150×210
   // Vi gemmer pos-typen (sleeve eller front/back) som 'positionType' på designet
   const isSleeveBox = (design.positionType === 'sleeve');
-  // v1.086: nye felt-boks dimensioner (50% større)
-  const boxW = isSleeveBox ? 112 : 225;
-  const boxH = isSleeveBox ? 150 : 315;
+  // v1.088: nye felt-boks dimensioner (50% større igen)
+  const boxW = isSleeveBox ? 168 : 338;
+  const boxH = isSleeveBox ? 225 : 473;
   const boxAspect = boxW / boxH;
   // Zone aspect i pixels = (zoneW% × boxW) / (zoneH% × boxH) = zoneW/zoneH × boxAspect
   const zoneAspect = (zoneW / zoneH) * boxAspect;
@@ -4561,6 +4654,39 @@ function centerDesignInBox(lineIdx, pos, event) {
     x: 50 - zoneW / 2,
     y: 50 - zoneH / 2
   };
+  renderGarmentLines();
+}
+
+// v1.089: Justér design-størrelse ±1 cm (bredde eller højde — låst aspect-ratio)
+// Vi konverterer cm-ændring til scalePercent-ændring og clampes til 30-100%.
+// dim er enten 'w' eller 'h' (visuelt — men aspect er låst, så det er ligegyldigt
+// hvilken man trykker på, begge ender med at justere scalePercent)
+// delta er +1 eller -1 (cm)
+function adjustDesignDim(lineIdx, pos, dim, delta, event) {
+  if (event) event.stopPropagation();
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  const design = gl.designs?.[pos]; if (!design) return;
+  const lineSize = gl.size;
+  const _dimCm = getTrykDimensions(pos, lineSize);
+  if (!_dimCm || !_dimCm.w || !_dimCm.h) return;
+  // Nuværende skalerede cm
+  const sc = (design.scalePercent || 100) / 100;
+  let newW, newH;
+  if (dim === 'w') {
+    newW = (_dimCm.w * sc) + delta;
+    // Lås aspect: skala = newW / _dimCm.w
+    const newSc = newW / _dimCm.w;
+    newH = _dimCm.h * newSc;
+  } else {
+    newH = (_dimCm.h * sc) + delta;
+    const newSc = newH / _dimCm.h;
+    newW = _dimCm.w * newSc;
+  }
+  // Konverter til scalePercent (samme for w og h pga. låst aspect)
+  let newPct = (newW / _dimCm.w) * 100;
+  // Clamp 30-100
+  newPct = Math.max(30, Math.min(100, newPct));
+  design.scalePercent = newPct;
   renderGarmentLines();
 }
 
@@ -4903,23 +5029,44 @@ function buildLineTrykSection(i, gl) {
     const dropZoneText = (m.type === 'sleeve') ? 'Træk' : 'Træk design';
     // v1.073-stil: lille label øverst + dim-badge under (stabilt layout)
     // v1.081: Hvis design uploadet, vis SKALERET cm-størrelse (max × scale%)
+    // v1.088: Vis kun den faktiske størrelse — ingen "(af X×Y)"-suffix
+    // v1.089: Når design uploadet, vis dim som klikbare bredde/højde med ↑/↓-knapper
     const _dimCm = getTrykDimensions(m.key, size);  // lokal — undgår clash med senere dimCm
-    let dimBadgeText = currentDim;
+    let dimBadgeHtml = '';
     const _designForDim = gl.designs?.[m.key];
-    if (_designForDim && _dimCm && typeof _designForDim.scalePercent === 'number') {
+    if (isActive && _designForDim && _dimCm && typeof _designForDim.scalePercent === 'number') {
+      // Design uploadet: interaktiv badge med ↑/↓
       const sc = _designForDim.scalePercent / 100;
       const sw = (_dimCm.w * sc);
       const sh = (_dimCm.h * sc);
       const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-      const skaleret = `${fmt(sw)} × ${fmt(sh)} cm`;
-      // Vis "13 × 17 cm (af 26 × 35)" hvis skaleret < max
-      if (Math.abs(_designForDim.scalePercent - 100) > 0.5) {
-        dimBadgeText = `${skaleret} (af ${currentDim})`;
-      } else {
-        dimBadgeText = skaleret;
-      }
+      const isMax = (_designForDim.scalePercent >= 99.5);
+      const isMin = (_designForDim.scalePercent <= 30.5);
+      const upArrow = `<svg viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5 5 4 2.5 6.5 5"/></svg>`;
+      const downArrow = `<svg viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5 3 4 5.5 6.5 3"/></svg>`;
+      dimBadgeHtml = `<div class="design-zone-dim has-controls">
+        <span class="dim-num-group">
+          <span class="dim-num">${fmt(sw)}</span>
+          <span class="dim-arrows">
+            <button class="dim-arrow-btn" ${isMax?'disabled':''} title="+1 cm" onclick="adjustDesignDim(${i},'${m.key}','w',1,event)">${upArrow}</button>
+            <button class="dim-arrow-btn" ${isMin?'disabled':''} title="−1 cm" onclick="adjustDesignDim(${i},'${m.key}','w',-1,event)">${downArrow}</button>
+          </span>
+        </span>
+        <span class="dim-x">×</span>
+        <span class="dim-num-group">
+          <span class="dim-num">${fmt(sh)}</span>
+          <span class="dim-arrows">
+            <button class="dim-arrow-btn" ${isMax?'disabled':''} title="+1 cm" onclick="adjustDesignDim(${i},'${m.key}','h',1,event)">${upArrow}</button>
+            <button class="dim-arrow-btn" ${isMin?'disabled':''} title="−1 cm" onclick="adjustDesignDim(${i},'${m.key}','h',-1,event)">${downArrow}</button>
+          </span>
+        </span>
+        <span class="dim-unit">cm</span>
+      </div>`;
+    } else if (isActive && currentDim) {
+      // Intet design uploadet: bare statisk tekst
+      dimBadgeHtml = `<div class="design-zone-dim">${currentDim}</div>`;
     }
-    const dimBadge = (isActive && dimBadgeText) ? `<div class="design-zone-dim">${dimBadgeText}</div>` : '';
+    const dimBadge = dimBadgeHtml;
 
     // v1.076: Tre tilstande på feltet:
     //   1. Inaktiv → klik = aktivér position
@@ -5020,13 +5167,19 @@ function buildLineTrykSection(i, gl) {
         : '';
 
       // v1.087: Action-knapper til højre for felt-boksen — center-knap (flere kommer senere)
+      // v1.088: Center-ikon er 4 pile pegende ind mod centrum
       const actionsPanel = `
         <div class="design-zone-actions">
           <button onclick="centerDesignInBox(${i}, '${m.key}', event)" title="Centrér design i felt">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <line x1="12" y1="3" x2="12" y2="21"/>
-              <line x1="3" y1="12" x2="21" y2="12"/>
+              <polyline points="5 9 9 9 9 5"/>
+              <polyline points="3 3 9 9"/>
+              <polyline points="19 9 15 9 15 5"/>
+              <polyline points="21 3 15 9"/>
+              <polyline points="5 15 9 15 9 19"/>
+              <polyline points="3 21 9 15"/>
+              <polyline points="19 15 15 15 15 19"/>
+              <polyline points="21 21 15 15"/>
             </svg>
           </button>
         </div>`;
