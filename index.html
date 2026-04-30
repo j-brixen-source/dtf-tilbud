@@ -4,12 +4,36 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.112
+  Version: 1.113
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.112  (2026-04-30)  ⭐ Aktuel — Refactor app: brug DB-kategorier i tilbud
+  v1.113  (2026-04-30)  ⭐ Aktuel — Per-produkt kategori-override + bug-fix
+          • BUG-FIX: selectGarment() ryddede ikke productCategoryOverride
+            når produkt blev skiftet → kategori forblev forkert. Nu ryddes
+            override + product_type kopieres fra det nye produkt så
+            smart-detect kan fungere korrekt.
+          • NY: Per-produkt persistens af kategori-mapping via Supabase-
+            tabellen produkt_kategori_overrides (oprettet via SQL i
+            v1.113-init). Når en kategori ændres manuelt, dukker der en
+            "Gem som standard"-knap op ved siden af dropdown'en.
+          • Klik på knappen → upsert til DB → toast "Gemt som standard
+            for [SKU]" → fremover bruger systemet den gemte mapping for
+            alle linjer/tilbud med samme produkt.
+          • Ny global window._kategoriOverrides (Map: sku → category_key)
+          • Ny funktion loadKategoriOverrides() + kald ved app-start
+            sammen med loadKategorier()
+          • getProductCategory(gl) bruger nu 4-lags lookup:
+              1. gl.productCategoryOverride (per-linje, ikke gemt)
+              2. _kategoriOverrides[gl.sku] (gemt i DB)
+              3. detectProductCategory(gl) (smart-detect)
+              4. 'other'
+          • Indikator-tekst ved dropdown: "auto-detekteret" / "gemt standard"
+            / "manuelt valgt på denne linje"
+          • Realtime sync af overrides kommer i v1.115
+
+  v1.112  (2026-04-30) — Refactor app: brug DB-kategorier i tilbud
           • Det STORE refactor — appen bruger nu kategorier fra Supabase i
             stedet for hardcoded PRODUCT_CATEGORIES + globale trykmål-felter
           • Kategorier loades nu ved app-start (ikke kun ved klik på Tab 2)
@@ -638,7 +662,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.112 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.113 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1389,6 +1413,30 @@
     font-size: 10px;
     color: var(--muted);
     font-style: italic;
+  }
+  /* v1.113: Grøn farve hvis kategori er hentet fra gemt mapping */
+  .product-category-row .auto-detected.kat-source-saved {
+    color: var(--green);
+    font-style: normal;
+    font-weight: 500;
+  }
+  /* v1.113: "Gem som standard"-knap der dukker op ved manuel kategori-ændring */
+  .product-category-row .btn-save-kat-default {
+    margin-left: 8px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid var(--green);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .product-category-row .btn-save-kat-default:hover {
+    background: var(--green);
+    color: white;
   }
   /* Aktiv: blå ramme + ✓ */
   .design-zone-box.active {
@@ -2477,7 +2525,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.112
+    v1.113
   </div>
 </div>
 
@@ -2570,7 +2618,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.112 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.113 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -5013,12 +5061,19 @@ function selectGarment(i,sku) {
     colorPictureMap: g?.colorPictureMap || {},
     fromSS: g?.fromSS || false,
     source: g?.source || '',
+    // v1.113: Kopiér product_type fra det nye produkt så smart-detect virker korrekt
+    product_type: g?.productType || g?.product_type || '',
+    // v1.113: Ryd per-linje kategori-override så det nye produkt kan re-detectes
+    // (eller bruge sin gemte _kategoriOverrides-mapping hvis der er en)
+    productCategoryOverride: undefined,
     selectedColor:'',
     sizeQtys:{}, manualQty:0,
     // Sikr positions-schema overlever (bagudkompatibilitet)
     positions: garmentLinesData[i].positions || defaultGarmentLine().positions,
     trykExpanded: typeof garmentLinesData[i].trykExpanded === 'boolean' ? garmentLinesData[i].trykExpanded : true
   };
+  // v1.113: Sizes nulstilles til den nye kategoris første size (migration)
+  migrateGarmentLineSizes(garmentLinesData[i]);
   activeImageLineIdx = i;
   renderGarmentLines();
 }
@@ -6772,12 +6827,130 @@ function detectProductCategory(gl) {
   return 'other';
 }
 
-// Hent kategori-key for en gl (manuel override > smart-default)
+// Hent kategori-key for en gl (manuel override > gemt DB-override > smart-default)
+// v1.113: 4-lags lookup
 function getProductCategory(gl) {
+  // Lag 1: per-linje override (brugeren har ændret kategorien på denne specifikke linje)
   if (gl && gl.productCategoryOverride && getCategoryByKey(gl.productCategoryOverride)) {
     return gl.productCategoryOverride;
   }
+  // Lag 2: gemt DB-override pr. produkt (sku → category_key)
+  if (gl && gl.sku && window._kategoriOverrides) {
+    const persisted = window._kategoriOverrides[gl.sku];
+    if (persisted && getCategoryByKey(persisted)) {
+      return persisted;
+    }
+  }
+  // Lag 3: smart-detect via keywords
+  // Lag 4: 'other' (fallback i detectProductCategory)
   return detectProductCategory(gl);
+}
+
+// v1.113: Hjælpefunktion — afgør hvilken "kilde" kategorien kommer fra
+// Bruges til at vise korrekt indikator-tekst og om Gem-knap skal vises
+// Returnerer: 'line' / 'persisted' / 'detected' / 'fallback'
+function getKategoriSource(gl) {
+  if (!gl) return 'fallback';
+  if (gl.productCategoryOverride && getCategoryByKey(gl.productCategoryOverride)) return 'line';
+  if (gl.sku && window._kategoriOverrides && window._kategoriOverrides[gl.sku]) return 'persisted';
+  const detected = detectProductCategory(gl);
+  return (detected && detected !== 'other') ? 'detected' : 'fallback';
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.113: Per-produkt kategori-override (gemt mapping i Supabase)
+// Tabel: produkt_kategori_overrides (sku PK → category_key)
+// ──────────────────────────────────────────────────────────────────────
+
+// Cache: window._kategoriOverrides = { sku: category_key }
+window._kategoriOverrides = {};
+
+async function loadKategoriOverrides() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    dbLog('loadKategoriOverrides: Supabase ikke klar');
+    return;
+  }
+  try {
+    const { data, error } = await sb
+      .from('produkt_kategori_overrides')
+      .select('sku, category_key');
+    if (error) throw error;
+
+    const map = {};
+    (data || []).forEach(row => {
+      if (row.sku && row.category_key) map[row.sku] = row.category_key;
+    });
+    window._kategoriOverrides = map;
+    dbLog('Kategori-overrides indlæst', Object.keys(map).length + ' produkter');
+  } catch (err) {
+    dbLog('loadKategoriOverrides fejlede', err.message);
+    // Behold tom map så app fortsætter (smart-detect tager over)
+  }
+}
+
+// Gem kategori-override for et produkt (kaldes fra "Gem som standard"-knap)
+async function saveKategoriOverride(lineIdx, event) {
+  if (event) event.stopPropagation();
+  const gl = garmentLinesData[lineIdx];
+  if (!gl || !gl.sku) {
+    showToast('Intet produkt valgt', 'error');
+    return;
+  }
+  const catKey = gl.productCategoryOverride;
+  if (!catKey || !getCategoryByKey(catKey)) {
+    showToast('Ingen manuel kategori valgt', 'error');
+    return;
+  }
+
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    showToast('Supabase ikke klar', 'error');
+    return;
+  }
+
+  const payload = {
+    sku: gl.sku,
+    category_key: catKey,
+    source: gl.fromSS ? 'stanley' : 'lshop'
+  };
+
+  try {
+    const { error } = await sb
+      .from('produkt_kategori_overrides')
+      .upsert(payload, { onConflict: 'sku' });
+    if (error) throw error;
+
+    // Opdater lokal cache
+    window._kategoriOverrides[gl.sku] = catKey;
+
+    // Ryd per-linje override (kategori er nu persisteret — kommer fra DB ved næste lookup)
+    delete gl.productCategoryOverride;
+
+    showToast('Gemt som standard for ' + (gl.sku || 'produktet'), 'success');
+    renderGarmentLines();
+    recalc();
+  } catch (err) {
+    showToast('Fejl ved gem: ' + (err.message || String(err)), 'error');
+    dbLog('saveKategoriOverride fejlede', err.message);
+  }
+}
+
+// v1.113: Slet gemt override for et produkt (bruges i v1.114 fra Tab 2 UI,
+// men også kaldbar her for fuldstændighed)
+async function deleteKategoriOverride(sku) {
+  if (!sku) return;
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) return;
+  try {
+    const { error } = await sb.from('produkt_kategori_overrides').delete().eq('sku', sku);
+    if (error) throw error;
+    delete window._kategoriOverrides[sku];
+    return true;
+  } catch (err) {
+    dbLog('deleteKategoriOverride fejlede', err.message);
+    return false;
+  }
 }
 
 // Skift kategori for en linje (kaldt fra dropdown)
@@ -7120,8 +7293,11 @@ function buildLineTrykSection(i, gl) {
             ).join('')}
           </select>
           ${gl.productCategoryOverride
-            ? `<span class="auto-detected">manuelt valgt</span>`
-            : `<span class="auto-detected">auto-detekteret</span>`
+            ? `<span class="auto-detected">manuelt valgt</span>
+               <button class="btn-save-kat-default" onclick="saveKategoriOverride(${i}, event)" title="Gem som standard for ${escapeHtml(gl.sku || 'produktet')}">💾 Gem som standard</button>`
+            : (window._kategoriOverrides && window._kategoriOverrides[gl.sku]
+                ? `<span class="auto-detected kat-source-saved" title="Hentet fra gemt produkt-kategori-mapping">★ gemt standard</span>`
+                : `<span class="auto-detected">auto-detekteret</span>`)
           }
         </div>
         <div class="design-zones">
@@ -8704,7 +8880,8 @@ function onAuthSuccess() {
   });
   // v1.112: Hent produkt-kategorier fra Supabase ved app-start (ikke kun ved Tab 2-klik).
   // Re-render tøjlinjer når kategorier er klar så dropdown viser kategoriens sizes.
-  loadKategorier().then(() => {
+  // v1.113: Hent også per-produkt kategori-overrides parallelt
+  Promise.all([loadKategorier(), loadKategoriOverrides()]).then(() => {
     if (typeof garmentLinesData !== 'undefined' && Array.isArray(garmentLinesData)) {
       garmentLinesData.forEach(gl => migrateGarmentLineSizes(gl));
     }
