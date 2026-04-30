@@ -4,12 +4,26 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.105
+  Version: 1.106
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.105  (2026-04-30)  ⭐ Aktuel — Fjern-knap flyttet til action-panel
+  v1.106  (2026-04-30)  ⭐ Aktuel — Custom confirm-modal
+          • Browser native confirm()-popups (vises i toppen) erstattet med
+            custom modal der positioneres nær click-event
+          • Ny global funktion showConfirm(message, anchorEvent) der
+            returnerer Promise<boolean> — Promise-baseret API
+          • Erstatter alle 4 confirm()-kald i appen:
+              1. Fjern design (× knap på design-felt)
+              2. Log ud af TETOS
+              3. Fjern medarbejder
+              4. Gem CSV-filer i Supabase
+          • Modal har: rolig animation, Escape lukker (Annullér),
+            Enter bekræfter (OK), klik udenfor lukker
+          • Auto-justerer hvis position ville være udenfor viewport
+
+  v1.105  (2026-04-30) — Fjern-knap flyttet til action-panel
           • Det lille × der fjerner et design er flyttet fra venstre side
             af feltet til højre side, lige under center-knappen
           • Samlet alle action-knapper i actionsPanel (cleaner layout)
@@ -528,7 +542,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.105 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.106 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1482,6 +1496,62 @@
   /* STATUS */
   .file-status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 20px; }
 
+  /* v1.106: Custom confirm-modal — erstatter browser native confirm() */
+  .custom-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.18);
+    z-index: 10000;
+    animation: ccfade 0.12s ease-out;
+  }
+  @keyframes ccfade { from { opacity: 0; } to { opacity: 1; } }
+  .custom-confirm-modal {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+    padding: 16px 18px;
+    max-width: 380px;
+    min-width: 240px;
+    font-family: inherit;
+    z-index: 10001;
+  }
+  .custom-confirm-message {
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 14px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+  }
+  .custom-confirm-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .custom-confirm-btn {
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text);
+    transition: all 0.12s ease;
+  }
+  .custom-confirm-btn.cancel:hover { background: var(--bg); }
+  .custom-confirm-btn.ok {
+    background: #185FA5;
+    color: white;
+    border-color: #185FA5;
+    font-weight: 500;
+  }
+  .custom-confirm-btn.ok:hover { background: #0d4a85; }
+  .custom-confirm-btn:focus { outline: 2px solid rgba(24,95,165,0.3); outline-offset: 1px; }
+
   /* SCROLLBAR */
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -1911,7 +1981,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.105
+    v1.106
   </div>
 </div>
 
@@ -2004,10 +2074,10 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.105 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.106 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
-    <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
+    <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
   </div>
 </div>
 
@@ -2950,6 +3020,78 @@ function showToast(message, type = 'info', duration = 3000) {
     t.classList.add('fadeout');
     setTimeout(() => t.remove(), 300);
   }, duration);
+}
+
+// v1.106: Custom confirm-modal positioneret nær click-event (i stedet for browser native popup)
+// Returnerer Promise<boolean> — true hvis OK, false hvis Annullér eller Escape.
+// anchorEvent kan være en MouseEvent — modal positioneres da nær muse-position.
+function showConfirm(message, anchorEvent) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-confirm-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'custom-confirm-modal';
+
+    const msgEl = document.createElement('div');
+    msgEl.className = 'custom-confirm-message';
+    msgEl.textContent = message;
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'custom-confirm-buttons';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'custom-confirm-btn cancel';
+    cancelBtn.textContent = 'Annullér';
+
+    const okBtn = document.createElement('button');
+    okBtn.className = 'custom-confirm-btn ok';
+    okBtn.textContent = 'OK';
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    modal.appendChild(msgEl);
+    modal.appendChild(btnRow);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Positionér modal nær click-event hvis muligt, ellers centreret
+    if (anchorEvent && typeof anchorEvent.clientX === 'number' && typeof anchorEvent.clientY === 'number') {
+      const padding = 12;
+      modal.style.position = 'fixed';
+      modal.style.left = (anchorEvent.clientX + padding) + 'px';
+      modal.style.top  = (anchorEvent.clientY + padding) + 'px';
+      modal.style.transform = 'none';
+      // Efter render: justér hvis udenfor viewport
+      requestAnimationFrame(() => {
+        const rect = modal.getBoundingClientRect();
+        if (rect.right > window.innerWidth - 10) {
+          modal.style.left = Math.max(10, window.innerWidth - rect.width - 10) + 'px';
+        }
+        if (rect.bottom > window.innerHeight - 10) {
+          modal.style.top = Math.max(10, window.innerHeight - rect.height - 10) + 'px';
+        }
+      });
+    }
+    // Hvis ingen anchor: default CSS centrerer modal
+
+    const cleanup = (result) => {
+      document.removeEventListener('keydown', onKey);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      resolve(result);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+      if (e.key === 'Enter')  { e.preventDefault(); cleanup(true);  }
+    };
+
+    okBtn.onclick     = (e) => { e.stopPropagation(); cleanup(true);  };
+    cancelBtn.onclick = (e) => { e.stopPropagation(); cleanup(false); };
+    overlay.onclick   = (e) => { if (e.target === overlay) cleanup(false); };
+    document.addEventListener('keydown', onKey);
+
+    setTimeout(() => okBtn.focus(), 0);
+  });
 }
 
 // ── Markup ──
@@ -4648,7 +4790,9 @@ async function removeDesignFromPos(lineIdx, pos, ev) {
   const design = gl.designs?.[pos];
   if (!design) return;
 
-  if (!confirm(`Fjern design "${design.filename}"?`)) return;
+  // v1.106: Custom confirm-modal positioneret nær click i stedet for browser-popup
+  const ok = await showConfirm(`Fjern design "${design.filename}"?`, ev);
+  if (!ok) return;
 
   // Slet fra Supabase Storage (best-effort, fejler stille)
   const sb = (typeof getSB === 'function') ? getSB() : null;
@@ -7381,8 +7525,10 @@ async function doLogin(event) {
   return false;
 }
 
-async function doLogout() {
-  if (!confirm('Log ud af TETOS?')) return;
+async function doLogout(ev) {
+  // v1.106: Custom confirm-modal
+  const ok = await showConfirm('Log ud af TETOS?', ev);
+  if (!ok) return;
   try {
     await supabaseClient.auth.signOut();
     // Reload for at rydde state komplet
@@ -7545,10 +7691,12 @@ async function tilfoejMedarbejder() {
   }
 }
 
-async function fjernMedarbejder(id) {
+async function fjernMedarbejder(id, ev) {
   const m = window._medarbejdere.find(x => x.id === id);
   if (!m) return;
-  if (!confirm(`Fjern "${m.navn}"?`)) return;
+  // v1.106: Custom confirm-modal
+  const ok = await showConfirm(`Fjern "${m.navn}"?`, ev);
+  if (!ok) return;
   try {
     const sb = getSB();
     // Vi sætter aktiv=false i stedet for at slette (bevarer historik på tilbud)
@@ -7580,7 +7728,7 @@ function renderMedarbejderAdmin() {
       <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
         <div style="width:32px;height:32px;border-radius:50%;background:${color};color:white;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:11px">${initials}</div>
         <div style="flex:1;font-size:13px">${m.navn}</div>
-        <button class="btn btn-sm" onclick="fjernMedarbejder(${m.id})" style="font-size:11px;color:var(--red,#dc2626)">Fjern</button>
+        <button class="btn btn-sm" onclick="fjernMedarbejder(${m.id}, event)" style="font-size:11px;color:var(--red,#dc2626)">Fjern</button>
       </div>`;
   }).join('');
 }
@@ -8213,9 +8361,9 @@ async function handleFileWithSave(e) {
       alert('Upload skal indeholde mindst 2 CSV-filer (artikelfil + Major-fil).\nFundet: ' + csvFiles.length);
       return;
     }
-    if (!confirm(`Du er ved at gemme ${csvFiles.length} CSV-filer permanent i Supabase som det nye årlige katalog. Det eksisterende katalog vil blive overskrevet. Fortsæt?`)) {
-      return;
-    }
+    // v1.106: Custom confirm-modal (anchor er upload-event)
+    const okConfirm = await showConfirm(`Du er ved at gemme ${csvFiles.length} CSV-filer permanent i Supabase som det nye årlige katalog. Det eksisterende katalog vil blive overskrevet. Fortsæt?`, e);
+    if (!okConfirm) return;
     const result = await window.lshopSupabase.parseAndSaveLshopFiles(csvFiles);
     alert(`✅ Gemt i Supabase:\n• ${result.products} produkter\n• ${result.variants} varianter`);
   } catch (err) {
