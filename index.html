@@ -4,12 +4,30 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.107
+  Version: 1.109
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.107  (2026-04-30)  ⭐ Aktuel — Produktkategori-mapping (eksempel-løsning)
+  v1.109  (2026-04-30)  ⭐ Aktuel — Tab-skelet på Indstillinger-siden
+          • Indstillinger-siden refactored til 3 horisontale faner:
+            "Generelt" / "Trykpositioner & Kategorier" / "Leverandører"
+          • Tab 1 (Generelt): priser, markup, trykmål, setup, rabat
+          • Tab 2 (Trykpositioner & Kategorier): placeholder — bygges
+            ud i v1.110-v1.112 med kategori-administration koblet til
+            Supabase-tabellen 'produkt_kategorier' (oprettet v1.108)
+          • Tab 3 (Leverandører): Katalog-status (SS + L-shop) + årlig
+            L-shop CSV-upload
+          • switchSettingsTab() ny funktion + sessionStorage-persistens
+            af sidste valgte tab (settings_tab nøgle)
+          • Save-bar forbliver over tabs (gælder hele siden)
+          • Versions-stempel på login-skærm bumpet automatisk
+          • SQL-tabellen produkt_kategorier nu med 10 default-kategorier
+            (tshirt, hoodie, jacket, totebag, apron, cap, napkin, pants
+            [NY], accessory [NY], other) — pants har front+back, accessory
+            kun front
+
+  v1.107  (2026-04-30) — Produktkategori-mapping (eksempel-løsning)
           • 8 produktkategorier defineret (T-shirt, hoodie, jakke, forklæde,
             taske, kasket, dækserviette, andet)
           • Smart-default: detectProductCategory() gætter ud fra produkt-navn
@@ -663,6 +681,53 @@
   /* PANELS */
   .panel { display: none; }
   .panel.active { display: block; }
+
+  /* v1.109: Settings tabs (horisontale faner på Indstillinger-siden) */
+  .settings-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 16px;
+    margin-top: 4px;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+  .settings-tab {
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .settings-tab:hover { color: var(--text); }
+  .settings-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .settings-tab-pane { display: none; }
+  .settings-tab-pane.active { display: block; }
+  .settings-tab-placeholder {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    background: var(--surface);
+    border: 1px dashed var(--border2);
+    border-radius: var(--radius);
+  }
+  .settings-tab-placeholder strong {
+    display: block;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
 
   /* CARDS */
   .card {
@@ -2033,7 +2098,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.107
+    v1.109
   </div>
 </div>
 
@@ -2166,47 +2231,15 @@
         <button class="save-btn" id="settingsSaveBtn" onclick="saveSettingsToSupabase()" disabled>Gem nu</button>
       </div>
 
-      <!-- ───── SEKTION 1: KATALOG-STATUS (toplinjer) ───── -->
-      <div class="card">
-        <div class="card-title">Katalog-status</div>
-        <div class="info-box" style="margin-bottom:14px">
-          Tøj-katalogerne synkroniseres automatisk fra leverandørerne. Du behøver normalt ikke gøre noget her.
-        </div>
-
-        <!-- Stanley Stella status -->
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-            <div>
-              <div style="font-size:13px;font-weight:500">Stanley Stella</div>
-              <div style="font-size:11px;color:var(--muted)">Auto-sync 1× dagligt kl. 06:00</div>
-            </div>
-            <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()" title="Genindlæs fra Supabase">
-              🔄 Genindlæs
-            </button>
-          </div>
-          <div id="ssStatus" class="file-status" style="margin-top:8px"></div>
-          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)">
-            <span>EUR/DKK kurs:</span>
-            <input type="number" id="eur_dkk" value="7.50" step="0.01" min="1" style="width:70px"
-              onchange="persistInput(this); window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()">
-            <span>(SS-priser omregnes automatisk)</span>
-          </div>
-        </div>
-
-        <!-- L-shop status -->
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-            <div>
-              <div style="font-size:13px;font-weight:500">L-shop</div>
-              <div style="font-size:11px;color:var(--muted)">Lager auto-sync 4× dagligt · Katalog manuelt 1×/år</div>
-            </div>
-            <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadLshopFromSupabase()" title="Genindlæs fra Supabase">
-              🔄 Genindlæs
-            </button>
-          </div>
-          <div id="garmentStatus" class="file-status" style="margin-top:8px"></div>
-        </div>
+      <!-- v1.109: Tab-navigation -->
+      <div class="settings-tabs" role="tablist">
+        <button class="settings-tab active" data-tab="generelt" onclick="switchSettingsTab('generelt')">Generelt</button>
+        <button class="settings-tab" data-tab="kategorier" onclick="switchSettingsTab('kategorier')">Trykpositioner &amp; Kategorier</button>
+        <button class="settings-tab" data-tab="leverandorer" onclick="switchSettingsTab('leverandorer')">Leverandører</button>
       </div>
+
+      <!-- ═════ TAB 1: GENERELT (priser, markup, trykmål, setup, rabat) ═════ -->
+      <div class="settings-tab-pane active" id="settings-tab-generelt">
 
       <!-- ───── SEKTION 2: PRIS-INDSTILLINGER (det du tit justerer) ───── -->
       <div class="card">
@@ -2318,6 +2351,66 @@
         </div>
       </div>
 
+      <!-- v1.109: Gem-knap hører til Tab 1 (Generelt) — den lukker også Tab 1 wrapperen -->
+      <button class="btn btn-primary" onclick="showPanel('quote')">Gem indstillinger og gå til tilbud →</button>
+
+      </div><!-- /settings-tab-generelt -->
+
+      <!-- ═════ TAB 2: TRYKPOSITIONER & KATEGORIER ═════ -->
+      <div class="settings-tab-pane" id="settings-tab-kategorier">
+        <div class="settings-tab-placeholder">
+          <strong>Trykpositioner &amp; Kategorier</strong>
+          Her bygges kategori-administration ud i kommende versioner (v1.110-v1.112).<br>
+          Du vil kunne tilføje, redigere og slette produktkategorier — fx T-shirt, Hoodie, Bukser — og pr. kategori definere hvilke tryk-positioner der er tilladt + hvilke størrelser der findes med tilhørende pris.<br><br>
+          <span style="font-size:12px;opacity:0.7">Datafundament: tabellen <code>produkt_kategorier</code> i Supabase med 10 default-kategorier (oprettet v1.108).</span>
+        </div>
+      </div>
+
+      <!-- ═════ TAB 3: LEVERANDØRER ═════ -->
+      <div class="settings-tab-pane" id="settings-tab-leverandorer">
+
+        <!-- Katalog-status (flyttet hertil fra Tab 1 i v1.109) -->
+        <div class="card">
+          <div class="card-title">Katalog-status</div>
+          <div class="info-box" style="margin-bottom:14px">
+            Tøj-katalogerne synkroniseres automatisk fra leverandørerne. Du behøver normalt ikke gøre noget her.
+          </div>
+
+          <!-- Stanley Stella status -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:13px;font-weight:500">Stanley Stella</div>
+                <div style="font-size:11px;color:var(--muted)">Auto-sync 1× dagligt kl. 06:00</div>
+              </div>
+              <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()" title="Genindlæs fra Supabase">
+                🔄 Genindlæs
+              </button>
+            </div>
+            <div id="ssStatus" class="file-status" style="margin-top:8px"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)">
+              <span>EUR/DKK kurs:</span>
+              <input type="number" id="eur_dkk" value="7.50" step="0.01" min="1" style="width:70px"
+                onchange="persistInput(this); window.lshopSupabase && window.lshopSupabase.loadStanleyFromSupabase()">
+              <span>(SS-priser omregnes automatisk)</span>
+            </div>
+          </div>
+
+          <!-- L-shop status -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:13px;font-weight:500">L-shop</div>
+                <div style="font-size:11px;color:var(--muted)">Lager auto-sync 4× dagligt · Katalog manuelt 1×/år</div>
+              </div>
+              <button class="btn btn-sm" onclick="window.lshopSupabase && window.lshopSupabase.loadLshopFromSupabase()" title="Genindlæs fra Supabase">
+                🔄 Genindlæs
+              </button>
+            </div>
+            <div id="garmentStatus" class="file-status" style="margin-top:8px"></div>
+          </div>
+        </div>
+
       <!-- ───── SEKTION 3: ÅRLIGE / SJÆLDNE OPGAVER (kollapset som default) ───── -->
       <details class="card" style="cursor:pointer">
         <summary style="font-size:14px;font-weight:500;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px">
@@ -2347,8 +2440,9 @@
         </div>
       </details>
 
-      <button class="btn btn-primary" onclick="showPanel('quote')">Gem indstillinger og gå til tilbud →</button>
-    </div>
+      </div><!-- /settings-tab-leverandorer -->
+
+    </div><!-- /panel-settings -->
 
     <!-- ── QUOTE ── -->
     <div id="panel-quote" class="panel active">
@@ -2771,6 +2865,31 @@ function showPanel(p) {
   if(p==='garments') renderGarmentTable();
   if(p==='kunder') loadKunder();
   if(p==='tilbud-liste') loadTilbud();
+  // v1.109: Restorér sidste valgte settings-tab når brugeren åbner Indstillinger
+  if(p==='settings') {
+    const savedTab = sessionStorage.getItem('settings_tab') || 'generelt';
+    switchSettingsTab(savedTab);
+  }
+}
+
+// v1.109: Skift mellem faner på Indstillinger-siden
+// Persistér valg i sessionStorage så det huskes mellem panel-skift
+function switchSettingsTab(tabKey) {
+  const validTabs = ['generelt', 'kategorier', 'leverandorer'];
+  if (!validTabs.includes(tabKey)) tabKey = 'generelt';
+
+  // Opdater fane-knapper (active class)
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabKey);
+  });
+
+  // Opdater pane-visning (vis kun valgt, skjul resten)
+  document.querySelectorAll('.settings-tab-pane').forEach(pane => {
+    pane.classList.toggle('active', pane.id === 'settings-tab-' + tabKey);
+  });
+
+  // Persistér valg
+  try { sessionStorage.setItem('settings_tab', tabKey); } catch(_) {}
 }
 
 // ──────────────────────────────────────────────────────────────────────
