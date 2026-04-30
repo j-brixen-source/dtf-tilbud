@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.106
+  Version: 1.107
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.106  (2026-04-30)  ⭐ Aktuel — Custom confirm-modal
+  v1.107  (2026-04-30)  ⭐ Aktuel — Produktkategori-mapping (eksempel-løsning)
+          • 8 produktkategorier defineret (T-shirt, hoodie, jakke, forklæde,
+            taske, kasket, dækserviette, andet)
+          • Smart-default: detectProductCategory() gætter ud fra produkt-navn
+            via regex (forkl[æa]de → apron, hoodie/sweat → hoodie, etc.)
+          • Kategori-dropdown lige under "Tryk-positioner" med markering om
+            valget er auto-detekteret eller manuelt
+          • Ny tilstand 0 på design-felter: ikke-tilladte positioner vises
+            grå/inaktiv (35% opacity) med tekst-forklaring inde i feltet
+            (fx "Ærmer ikke tilgængelig på Forklæde")
+          • Skift af kategori deaktiverer automatisk positioner der ikke
+            længere er tilladt
+
+  v1.106  (2026-04-30) — Custom confirm-modal (erstatter browser native)
           • Browser native confirm()-popups (vises i toppen) erstattet med
             custom modal der positioneres nær click-event
           • Ny global funktion showConfirm(message, anchorEvent) der
@@ -542,7 +555,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.106 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.107 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -894,6 +907,45 @@
     pointer-events: none;
   }
   .design-zone-box.sleeve .design-zone-plus { font-size: 16px; }
+  /* v1.107: Tilstand 0 — position ikke tilladt for produktkategori */
+  .design-zone-disabled-text {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.85);
+    font-size: 11px;
+    text-align: center;
+    padding: 8px;
+    line-height: 1.35;
+    pointer-events: none;
+    font-style: italic;
+  }
+  .design-zone-box.sleeve .design-zone-disabled-text { font-size: 10px; padding: 4px; }
+  /* Kategori-dropdown over design-felterne */
+  .product-category-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 8px 0;
+    font-size: 12px;
+  }
+  .product-category-row label {
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .product-category-row select {
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .product-category-row .auto-detected {
+    font-size: 10px;
+    color: var(--muted);
+    font-style: italic;
+  }
   /* Aktiv: blå ramme + ✓ */
   .design-zone-box.active {
     border: 2px solid #185FA5;
@@ -1981,7 +2033,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.106
+    v1.107
   </div>
 </div>
 
@@ -2074,7 +2126,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.106 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.107 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -5683,10 +5735,73 @@ function calcLineTryk(gl, lineQty) {
   return out;
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// v1.107: Produktkategori-mapping — skjul ikke-relevante design-zoner
+// ──────────────────────────────────────────────────────────────────────
+
+// Hver kategori definerer hvilke positioner der er TILLADT.
+// Positioner der ikke er i 'allowed' vises som inaktive med forklaring.
+const PRODUCT_CATEGORIES = {
+  tshirt:  { label: 'T-shirt / Polo',          allowed: ['front','back','sleeve_l','sleeve_r'] },
+  hoodie:  { label: 'Hoodie / Sweatshirt',     allowed: ['front','back','sleeve_l','sleeve_r'] },
+  jacket:  { label: 'Jakke / Vest (uden ærmer)', allowed: ['front','back'] },
+  apron:   { label: 'Forklæde',                allowed: ['front'] },
+  bag:     { label: 'Taske',                   allowed: ['front'] },
+  cap:     { label: 'Kasket / Hat',            allowed: ['front'] },
+  napkin:  { label: 'Dækserviette / Tekstil',  allowed: ['front'] },
+  other:   { label: 'Andet (alle 4 sider)',    allowed: ['front','back','sleeve_l','sleeve_r'] },
+};
+
+// Smart-default: gæt produktkategori ud fra navn og product_type
+function detectProductCategory(gl) {
+  const nameRaw = (gl.name || '').toLowerCase();
+  const typeRaw = (gl.product_type || gl.productType || '').toLowerCase();
+  const text = nameRaw + ' ' + typeRaw;
+  // Rækkefølge er vigtig — mest specifikke først
+  if (/forkl[æa]de|apron/.test(text)) return 'apron';
+  if (/taske|tote|backpack|gymsac|bag\b/.test(text)) return 'bag';
+  if (/d[æa]kserv|napkin|h[åa]ndkl[æa]de|towel/.test(text)) return 'napkin';
+  if (/kasket|cap\b|h[au]e\b|beanie|hat\b/.test(text)) return 'cap';
+  if (/hoodie|hood\b|sweatshirt|sweat\b/.test(text)) return 'hoodie';
+  if (/vest\b|gilet|bodywarmer/.test(text)) return 'jacket';
+  if (/jakke|jacket|coat\b|parka/.test(text)) return 'jacket';
+  if (/polo/.test(text)) return 'tshirt';
+  if (/t-?shirt|tee\b|tank\b|singlet/.test(text)) return 'tshirt';
+  return 'other'; // default: tillad alle 4 sider
+}
+
+// Hent kategori for en gl (manuel override > smart-default)
+function getProductCategory(gl) {
+  if (gl.productCategoryOverride && PRODUCT_CATEGORIES[gl.productCategoryOverride]) {
+    return gl.productCategoryOverride;
+  }
+  return detectProductCategory(gl);
+}
+
+// Skift kategori for en linje (kaldt fra dropdown)
+function setProductCategory(lineIdx, categoryKey) {
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  if (!PRODUCT_CATEGORIES[categoryKey]) return;
+  gl.productCategoryOverride = categoryKey;
+  // Hvis nogle aktive positioner ikke længere er tilladt, deaktiver dem
+  const allowed = PRODUCT_CATEGORIES[categoryKey].allowed;
+  ['front','back','sleeve_l','sleeve_r'].forEach(pos => {
+    if (gl.positions?.[pos]?.active && !allowed.includes(pos)) {
+      gl.positions[pos].active = false;
+    }
+  });
+  renderGarmentLines();
+  recalc();
+}
+
 // Byg HTML for tryk-sektion pr. linje (v1.070: design-zone billed-felter)
 function buildLineTrykSection(i, gl) {
   const positions = gl.positions || defaultGarmentLine().positions;
   const expanded = !!gl.trykExpanded;
+  // v1.107: Bestem kategori (smart-default med override-mulighed)
+  const categoryKey = getProductCategory(gl);
+  const category = PRODUCT_CATEGORIES[categoryKey];
+  const allowedPositions = category.allowed;
   const posMeta = [
     {key:'front',    title:'Forside',  short:'FORSIDE',  type:'front'},
     {key:'back',     title:'Bagside',  short:'BAGSIDE',  type:'back'},
@@ -5794,7 +5909,19 @@ function buildLineTrykSection(i, gl) {
     // v1.077: Beregn tryk-zone proportional + default-position
     const dimCm = getTrykDimensions(m.key, size);
     const zonePct = getTrykZonePercent(m.key, dimCm);
-    if (!isActive) {
+    // v1.107: Ny tilstand 0 — position ikke tilladt for denne produktkategori
+    const isAllowed = allowedPositions.includes(m.key);
+    if (!isAllowed) {
+      // Tilstand 0: ikke tilladt → vis grå/inaktiv med forklaring, ingen interaktion
+      boxClick = '';  // ingen handler
+      boxDragOver = boxDragLeave = boxDrop = '';
+      boxStyle = `background-color:${tekstilFarve};opacity:0.35;pointer-events:none`;
+      const reason = (m.type === 'sleeve')
+        ? `Ærmer ikke tilgængelig på<br>${category.label}`
+        : `${m.title} ikke tilgængelig på<br>${category.label}`;
+      boxInner = `<div class="design-zone-disabled-text">${reason}</div>`;
+      deactivateBtn = '';
+    } else if (!isActive) {
       // Tilstand 1: inaktiv
       // v1.095: Drag-and-drop på inaktivt felt — aktiverer + sætter default + uploader
       // v1.096: brug Auto-versioner af handlers så drop kan ske selvom felt ikke er aktivt
@@ -5977,6 +6104,18 @@ function buildLineTrykSection(i, gl) {
         <span class="tryk-header-summary">${summary}${lineQty>0 ? ' · '+lineQty+' stk' : ''}</span>
       </div>
       <div class="tryk-content">
+        <div class="product-category-row">
+          <label>Produkttype:</label>
+          <select onchange="setProductCategory(${i}, this.value)">
+            ${Object.entries(PRODUCT_CATEGORIES).map(([key, c]) =>
+              `<option value="${key}" ${key === categoryKey ? 'selected' : ''}>${c.label}</option>`
+            ).join('')}
+          </select>
+          ${gl.productCategoryOverride
+            ? `<span class="auto-detected">manuelt valgt</span>`
+            : `<span class="auto-detected">auto-detekteret</span>`
+          }
+        </div>
         <div class="design-zones">
           ${zones[0]}
           ${zones[1]}
