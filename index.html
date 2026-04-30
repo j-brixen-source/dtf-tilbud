@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.096
+  Version: 1.097
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.096  (2026-04-30)  ⭐ Aktuel — Drag-aktivér fix + ingen blink
+  v1.097  (2026-04-30)  ⭐ Aktuel — Resize-light-update + sleeve-stack
+          • FIX: Træk i hjørner (resize-handles) brugte stadig full re-render
+            → andre felter blinkede. Nu bruges light-update.
+          • FIX: Drag rundt (flytning) brugte også full re-render → ditto fix
+          • FIX: Center-knap brugte også full re-render → ditto fix
+          • Ærme-felter for smalle til 'DPI · 10 × 10 cm' side-by-side:
+            DPI vises nu OVER cm-tekst (stacked) på sleeves, side-by-side
+            på front/back
+
+  v1.096  (2026-04-30) — Drag-aktivér fix + ingen blink (slider only)
           • FIX: Drag-and-drop på inaktivt felt aktiverer nu KORREKT
             (handleDesignDragOver returnerede før preventDefault på inaktive
             felter, så browseren afviste drop'en — løst med ny Auto-version)
@@ -445,7 +454,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.096 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.097 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1823,7 +1832,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.096
+    v1.097
   </div>
 </div>
 
@@ -1916,7 +1925,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.096 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.097 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4828,15 +4837,29 @@ function updateDesignFieldDisplay(lineIdx, pos) {
     if (designZoneEl) {
       const dimEl = designZoneEl.querySelector('.design-zone-dim.has-controls');
       if (dimEl) {
-        // Reconstruct dim HTML
-        const dpiBadgeForDim = dpiInfo
-          ? `<span class="design-zone-dpi dpi-${dpiInfo.level}" style="margin-right:10px;font-size:13px">${dpiInfo.dpi} DPI</span>`
-          : '';
-        dimEl.innerHTML = `${dpiBadgeForDim}
-          <span class="dim-num">${fmt(newDimWcm)}</span>
-          <span class="dim-x">×</span>
-          <span class="dim-num">${fmt(newDimHcm)}</span>
-          <span class="dim-unit">cm</span>`;
+        // v1.097: For sleeves bruges stacked layout (DPI over cm), ellers side-by-side
+        const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
+        if (isSleeve) {
+          const dpiBadgeStack = (dpiInfo)
+            ? `<div style="margin-bottom:2px"><span class="design-zone-dpi dpi-${dpiInfo.level}" style="font-size:13px">${dpiInfo.dpi} DPI</span></div>`
+            : '';
+          dimEl.innerHTML = `${dpiBadgeStack}
+            <div style="display:flex;align-items:center;gap:4px">
+              <span class="dim-num">${fmt(newDimWcm)}</span>
+              <span class="dim-x">×</span>
+              <span class="dim-num">${fmt(newDimHcm)}</span>
+              <span class="dim-unit">cm</span>
+            </div>`;
+        } else {
+          const dpiBadgeForDim = dpiInfo
+            ? `<span class="design-zone-dpi dpi-${dpiInfo.level}" style="margin-right:10px;font-size:13px">${dpiInfo.dpi} DPI</span>`
+            : '';
+          dimEl.innerHTML = `${dpiBadgeForDim}
+            <span class="dim-num">${fmt(newDimWcm)}</span>
+            <span class="dim-x">×</span>
+            <span class="dim-num">${fmt(newDimHcm)}</span>
+            <span class="dim-unit">cm</span>`;
+        }
       }
     }
   }
@@ -4875,11 +4898,18 @@ function centerDesignInBox(lineIdx, pos, event) {
   const design = gl.designs?.[pos]; if (!design) return;
   const zoneW = design.zoneWidthPct  || 80;
   const zoneH = design.zoneHeightPct || 80;
-  design.position = {
-    x: 50 - zoneW / 2,
-    y: 50 - zoneH / 2
-  };
-  renderGarmentLines();
+  const newX = 50 - zoneW / 2;
+  const newY = 50 - zoneH / 2;
+  design.position = { x: newX, y: newY };
+  // v1.097: Light-update — flyt zone direkte uden re-render
+  const zone = document.getElementById(`tryk_zone_${lineIdx}_${pos}`);
+  if (zone) {
+    zone.style.left = newX + '%';
+    zone.style.top  = newY + '%';
+    zone.dataset.x = newX.toFixed(2);
+    zone.dataset.y = newY.toFixed(2);
+  }
+  updateDesignFieldDisplay(lineIdx, pos);
 }
 
 // v1.089: Justér design-størrelse ±1 cm (bredde eller højde — låst aspect-ratio)
@@ -4954,10 +4984,6 @@ function handleZoneResizeMove(e) {
   const gl = garmentLinesData[lineIdx]; if (!gl) return;
   const design = gl.designs?.[pos]; if (!design) return;
   // v1.080: Korrekt drag-retning. Drag UDAD (væk fra centrum) = STØRRE.
-  // Top-left:     UDAD = up-left   (dx<0, dy<0) →  delta = -(dx + dy)
-  // Top-right:    UDAD = up-right  (dx>0, dy<0) →  delta = (dx - dy)
-  // Bottom-left:  UDAD = down-left (dx<0, dy>0) →  delta = (dy - dx)
-  // Bottom-right: UDAD = down-right(dx>0, dy>0) →  delta = (dx + dy)
   const dx = e.clientX - startMouseX;
   const dy = e.clientY - startMouseY;
   const corner = _zoneResizeState.corner;
@@ -4966,36 +4992,21 @@ function handleZoneResizeMove(e) {
   if (corner === 'trh') delta =  (dx - dy);
   if (corner === 'blh') delta =  (dy - dx);
   if (corner === 'brh') delta =  (dx + dy);
-  // Konvertér delta-pixels til procent (delta / boxW * 100)
+  // Konvertér delta-pixels til procent
   const deltaPct = (delta / boxW) * 100;
   let newScale = startScale + deltaPct;
   newScale = Math.max(30, Math.min(100, newScale));
   design.scalePercent = newScale;
-  // Light update: opdater zone-størrelse direkte
-  const zone = document.getElementById(`tryk_zone_${lineIdx}_${pos}`);
-  if (zone) {
-    const baseW = design.baseZoneWidthPct || 80;
-    const baseH = design.baseZoneHeightPct || 80;
-    const w = (baseW * newScale) / 100;
-    const h = (baseH * newScale) / 100;
-    zone.style.width  = w + '%';
-    zone.style.height = h + '%';
-    design.zoneWidthPct = w;
-    design.zoneHeightPct = h;
-  }
-  // Opdater slider-værdi
-  const slider = document.getElementById(`scale_slider_${lineIdx}_${pos}`);
-  const pctEl  = document.getElementById(`scale_pct_${lineIdx}_${pos}`);
-  if (slider) slider.value = Math.round(newScale);
-  if (pctEl)  pctEl.textContent = Math.round(newScale) + '%';
+  // v1.097: Light-update for ALT i feltet (zone + slider + DPI + dim + warning)
+  updateDesignFieldDisplay(lineIdx, pos);
 }
 
 function handleZoneResizeEnd() {
   if (!_zoneResizeState) return;
   const { lineIdx, pos } = _zoneResizeState;
   _zoneResizeState = null;
-  // Re-render for at opdatere warning-state
-  renderGarmentLines();
+  // v1.097: Light-update i stedet for full re-render → andre felter blinker ikke
+  updateDesignFieldDisplay(lineIdx, pos);
 }
 
 // Tilføj globale resize-listeners (sammen med drag-listeners)
@@ -5085,8 +5096,8 @@ function handleZoneDragEnd() {
     }
   }
   _zoneDragState = null;
-  // v1.079: re-render for at vise/skjule warning baseret på ny position
-  renderGarmentLines();
+  // v1.097: Light-update i stedet for full re-render
+  updateDesignFieldDisplay(lineIdx, pos);
 }
 
 // Globale listeners på document så drag fortsætter selv om musen forlader zonen
@@ -5262,17 +5273,36 @@ function buildLineTrykSection(i, gl) {
     const _designForDim = gl.designs?.[m.key];
     if (isActive && _designForDim && _dimCm && typeof _designForDim.scalePercent === 'number') {
       // v1.095: ↑/↓-pile fjernet — kun statisk cm-tekst med DPI til venstre
+      // v1.097: Sleeve-felter er for smalle til DPI side-by-side → stak DPI over cm
       const sc = _designForDim.scalePercent / 100;
       const sw = (_dimCm.w * sc);
       const sh = (_dimCm.h * sc);
       const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-      dimBadgeHtml = `<div class="design-zone-dim has-controls">
-        ${dpiBadgeForDim}
-        <span class="dim-num">${fmt(sw)}</span>
-        <span class="dim-x">×</span>
-        <span class="dim-num">${fmt(sh)}</span>
-        <span class="dim-unit">cm</span>
-      </div>`;
+      const isSleeve = (m.type === 'sleeve');
+      if (isSleeve) {
+        // Sleeves: DPI over cm, ikke ved siden af
+        const dpiBadgeStack = (dpiInfo)
+          ? `<div style="margin-bottom:2px"><span class="design-zone-dpi dpi-${dpiInfo.level}" style="font-size:13px">${dpiInfo.dpi} DPI</span></div>`
+          : '';
+        dimBadgeHtml = `<div class="design-zone-dim has-controls" style="flex-direction:column;gap:2px;min-height:48px">
+          ${dpiBadgeStack}
+          <div style="display:flex;align-items:center;gap:4px">
+            <span class="dim-num">${fmt(sw)}</span>
+            <span class="dim-x">×</span>
+            <span class="dim-num">${fmt(sh)}</span>
+            <span class="dim-unit">cm</span>
+          </div>
+        </div>`;
+      } else {
+        // Front/back: DPI til venstre for cm
+        dimBadgeHtml = `<div class="design-zone-dim has-controls">
+          ${dpiBadgeForDim}
+          <span class="dim-num">${fmt(sw)}</span>
+          <span class="dim-x">×</span>
+          <span class="dim-num">${fmt(sh)}</span>
+          <span class="dim-unit">cm</span>
+        </div>`;
+      }
     } else if (isActive && currentDim) {
       // Intet design uploadet: bare statisk tekst
       dimBadgeHtml = `<div class="design-zone-dim">${currentDim}</div>`;
