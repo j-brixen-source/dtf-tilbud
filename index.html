@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.094
+  Version: 1.095
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.094  (2026-04-30)  ⭐ Aktuel — DPI-farver + sleeve-fit
+  v1.095  (2026-04-30)  ⭐ Aktuel — Forenkling + drag-aktivér
+          • ↑/↓-pile på cm-tekst FJERNET (kun statisk visning nu)
+            — slider er det eneste skala-kontrol fremover
+          • Slider også for ærmer (var tidligere kun front/back)
+          • Drag-and-drop på INAKTIVT felt: aktiverer feltet automatisk,
+            sætter default-størrelse (small/large), og uploader filen.
+            Brugeren behøver ikke længere klikke på feltet først.
+
+  v1.094  (2026-04-30) — DPI-farver + sleeve-fit
           • DPI-farver opdateret: ≥200 grøn, 100-199 gul, <100 rød
           • Tilføjet 'dpi-red' CSS-class
           • FIX: Sleeves blev skåret over fordi container ikke havde plads
@@ -428,7 +436,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.094 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.095 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1806,7 +1814,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.094
+    v1.095
   </div>
 </div>
 
@@ -1899,7 +1907,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.094 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.095 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4377,6 +4385,28 @@ function handleDesignDrop(e, lineIdx, pos) {
   if (file) handleDesignFile(lineIdx, pos, file);
 }
 
+// v1.095: Drop på inaktivt felt — aktivér feltet med default-størrelse, så upload
+// Standardstørrelse: sleeve='small', front/back='large' (som defaultGarmentLine).
+function handleDesignDropAuto(e, lineIdx, pos) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const gl = garmentLinesData[lineIdx]; if (!gl) return;
+  if (!gl.positions) gl.positions = defaultGarmentLine().positions;
+  if (!gl.positions[pos]) {
+    gl.positions[pos] = { active: false, size: (pos.startsWith('sleeve') ? 'small' : 'large') };
+  }
+  // Aktivér feltet
+  gl.positions[pos].active = true;
+  // Hvis ingen size er sat, brug default
+  if (!gl.positions[pos].size) {
+    gl.positions[pos].size = pos.startsWith('sleeve') ? 'small' : 'large';
+  }
+  // Upload
+  const file = e.dataTransfer.files?.[0];
+  if (file) handleDesignFile(lineIdx, pos, file);
+  else renderGarmentLines();
+}
+
 // Hovedfunktion: validér + upload + persistér design
 async function handleDesignFile(lineIdx, pos, file) {
   // Validering
@@ -4764,15 +4794,16 @@ function adjustDesignDim(lineIdx, pos, dim, delta, event) {
   if (event) event.stopPropagation();
   const gl = garmentLinesData[lineIdx]; if (!gl) return;
   const design = gl.designs?.[pos]; if (!design) return;
-  const lineSize = gl.size;
-  const _dimCm = getTrykDimensions(pos, lineSize);
+  // v1.095: Hent korrekt size for DEN specifikke position (ikke gl.size, som ikke findes).
+  // Hver position har sin egen size i gl.positions[pos].size.
+  const posSize = gl.positions?.[pos]?.size || ((pos === 'sleeve_l' || pos === 'sleeve_r') ? 'small' : 'large');
+  const _dimCm = getTrykDimensions(pos, posSize);
   if (!_dimCm || !_dimCm.w || !_dimCm.h) return;
   // Nuværende skalerede cm
   const sc = (design.scalePercent || 100) / 100;
   let newW, newH;
   if (dim === 'w') {
     newW = (_dimCm.w * sc) + delta;
-    // Lås aspect: skala = newW / _dimCm.w
     const newSc = newW / _dimCm.w;
     newH = _dimCm.h * newSc;
   } else {
@@ -5143,32 +5174,16 @@ function buildLineTrykSection(i, gl) {
     let dimBadgeHtml = '';
     const _designForDim = gl.designs?.[m.key];
     if (isActive && _designForDim && _dimCm && typeof _designForDim.scalePercent === 'number') {
-      // Design uploadet: interaktiv badge med ↑/↓
+      // v1.095: ↑/↓-pile fjernet — kun statisk cm-tekst med DPI til venstre
       const sc = _designForDim.scalePercent / 100;
       const sw = (_dimCm.w * sc);
       const sh = (_dimCm.h * sc);
       const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-      const isMax = (_designForDim.scalePercent >= 99.5);
-      const isMin = (_designForDim.scalePercent <= 30.5);
-      const upArrow = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 7.5 6 4 9.5 7.5"/></svg>`;
-      const downArrow = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5 4.5 6 8 9.5 4.5"/></svg>`;
       dimBadgeHtml = `<div class="design-zone-dim has-controls">
         ${dpiBadgeForDim}
-        <span class="dim-num-group">
-          <span class="dim-num">${fmt(sw)}</span>
-          <span class="dim-arrows">
-            <button class="dim-arrow-btn" ${isMax?'disabled':''} title="+1 cm" onclick="adjustDesignDim(${i},'${m.key}','w',1,event)">${upArrow}</button>
-            <button class="dim-arrow-btn" ${isMin?'disabled':''} title="−1 cm" onclick="adjustDesignDim(${i},'${m.key}','w',-1,event)">${downArrow}</button>
-          </span>
-        </span>
+        <span class="dim-num">${fmt(sw)}</span>
         <span class="dim-x">×</span>
-        <span class="dim-num-group">
-          <span class="dim-num">${fmt(sh)}</span>
-          <span class="dim-arrows">
-            <button class="dim-arrow-btn" ${isMax?'disabled':''} title="+1 cm" onclick="adjustDesignDim(${i},'${m.key}','h',1,event)">${upArrow}</button>
-            <button class="dim-arrow-btn" ${isMin?'disabled':''} title="−1 cm" onclick="adjustDesignDim(${i},'${m.key}','h',-1,event)">${downArrow}</button>
-          </span>
-        </span>
+        <span class="dim-num">${fmt(sh)}</span>
         <span class="dim-unit">cm</span>
       </div>`;
     } else if (isActive && currentDim) {
@@ -5189,8 +5204,11 @@ function buildLineTrykSection(i, gl) {
     const zonePct = getTrykZonePercent(m.key, dimCm);
     if (!isActive) {
       // Tilstand 1: inaktiv
+      // v1.095: Drag-and-drop på inaktivt felt — aktiverer + sætter default + uploader
       boxClick = `onclick="toggleLinePos(${i}, '${m.key}')"`;
-      boxDragOver = boxDragLeave = boxDrop = '';
+      boxDragOver  = `ondragover="handleDesignDragOver(event, ${i}, '${m.key}')"`;
+      boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
+      boxDrop      = `ondrop="handleDesignDropAuto(event, ${i}, '${m.key}')"`;
       boxStyle = `background-color:${tekstilFarve}`;
       boxInner = `
         <div class="design-zone-plus">+</div>
@@ -5319,7 +5337,8 @@ function buildLineTrykSection(i, gl) {
 
     // v1.079: Skala-slider under feltet (kun når design uploadet)
     const scalePctVal = (design && typeof design.scalePercent === 'number') ? Math.round(design.scalePercent) : 100;
-    const scaleSliderHtml = (isActive && design && (m.type !== 'sleeve')) ? `
+    // v1.095: Slider også for ærmer (var tidligere kun front/back)
+    const scaleSliderHtml = (isActive && design) ? `
       <div class="design-zone-scale-slider">
         <span>Skala:</span>
         <input type="range" min="30" max="100" step="1" value="${scalePctVal}"
