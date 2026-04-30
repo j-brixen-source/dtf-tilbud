@@ -4,12 +4,31 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.113
+  Version: 1.114
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.113  (2026-04-30)  ⭐ Aktuel — Per-produkt kategori-override + bug-fix
+  v1.114  (2026-04-30)  ⭐ Aktuel — Tab 2: Produkter pr. kategori
+          • Hver kategori-række har nu en "📋 X produkter"-knap der viser
+            antal produkter mappet til kategorien (auto + gemt)
+          • Klik på knappen åbner modal med liste over alle produkter:
+              - SKU, navn, leverandør (L-shop/Stanley)
+              - Kilde-indikator: ★ gemt override / ○ auto-detected
+              - "Fjern"-knap kun på rækker med gemt override (★)
+          • Live-søg input øverst: filtrerer på navn + SKU + brand mens
+            man taster (~7000 produkter, <10ms iteration)
+          • "+ Tilføj produkt"-knap → switcher modal til søge-mode:
+              - Søg på tværs af alle garments (lshop + stanley)
+              - Hver resultat viser nuværende kategori
+              - Klik "Tilføj til [kategori]" → upsert override
+              - Hvis produktet allerede er i en anden kategori → flyttes
+                automatisk (UPSERT på SKU = en kategori pr. produkt)
+          • Tæller på kategori-listen opdateres når produkter tilføjes/fjernes
+          • Bruger getProductCategory() konsistent — samme logik som tilbud-side
+          • Realtime sync af overrides kommer i v1.115
+
+  v1.113  (2026-04-30) — Per-produkt kategori-override + bug-fix
           • BUG-FIX: selectGarment() ryddede ikke productCategoryOverride
             når produkt blev skiftet → kategori forblev forkert. Nu ryddes
             override + product_type kopieres fra det nye produkt så
@@ -662,7 +681,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.113 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.114 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1131,6 +1150,156 @@
     display: none;
   }
   .kat-modal-error.show { display: block; }
+
+  /* v1.114: Produkt-liste-modal (vist når man klikker "Produkter" på en kategori) */
+  .kat-prod-search {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 13px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+  }
+  .kat-prod-stats {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding: 0 2px;
+  }
+  .kat-prod-stats strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .kat-prod-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: white;
+  }
+  .kat-prod-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    transition: background 0.1s;
+  }
+  .kat-prod-row:last-child { border-bottom: none; }
+  .kat-prod-row:hover { background: var(--bg); }
+  .kat-prod-icon {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .kat-prod-icon.saved { color: var(--green); font-weight: bold; }
+  .kat-prod-icon.auto { color: var(--muted); opacity: 0.5; }
+  .kat-prod-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kat-prod-sku {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-right: 8px;
+  }
+  .kat-prod-name {
+    color: var(--text);
+  }
+  .kat-prod-source {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .kat-prod-source.lshop { background: #e8f0fa; color: #185FA5; }
+  .kat-prod-source.stanley { background: #f0eaf8; color: #6b3a99; }
+  .kat-prod-actions {
+    flex-shrink: 0;
+  }
+  .kat-prod-remove {
+    padding: 3px 8px;
+    font-size: 10px;
+    border: 1px solid var(--border2);
+    background: white;
+    color: var(--red);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .kat-prod-remove:hover { background: var(--red-bg); border-color: var(--red); }
+  .kat-prod-empty {
+    padding: 30px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .kat-prod-add-btn {
+    margin-bottom: 12px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--text);
+    background: var(--text);
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    width: 100%;
+  }
+  .kat-prod-add-btn:hover { opacity: 0.85; }
+
+  /* v1.114: Tilføj-mode (søg blandt alle produkter for at tilføje til en kategori) */
+  .kat-prod-add-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .kat-prod-add-row:last-child { border-bottom: none; }
+  .kat-prod-add-row:hover { background: var(--bg); }
+  .kat-prod-add-current {
+    font-size: 10px;
+    color: var(--muted);
+    font-style: italic;
+    margin-left: 4px;
+  }
+  .kat-prod-add-btn-row {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    border: 1px solid var(--green);
+    background: var(--green-bg);
+    color: var(--green);
+    border-radius: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .kat-prod-add-btn-row:hover { background: var(--green); color: white; }
+  .kat-back-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    background: white;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .kat-back-btn:hover { background: var(--bg); }
 
   /* CARDS */
   .card {
@@ -2525,7 +2694,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.113
+    v1.114
   </div>
 </div>
 
@@ -2618,7 +2787,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.113 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.114 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3447,6 +3616,7 @@ function renderKategorierList() {
       +     '</div>'
       +   '</div>'
       +   '<div class="kat-row-actions">'
+      +     '<button class="kat-btn" onclick="openKategoriProdukter(' + (kat.id || 'null') + ', \'' + escapeHtml(kat.key) + '\')" title="Se produkter i denne kategori">📋 Produkter</button>'
       +     '<button class="kat-btn" onclick="openKategoriModal(' + (kat.id || 'null') + ')">Rediger</button>'
       +     '<button class="kat-btn danger" onclick="deleteKategori(' + (kat.id || 'null') + ', event)">Slet</button>'
       +   '</div>'
@@ -3783,6 +3953,351 @@ async function deleteKategori(id, event) {
     showToast('Fejl ved slet: ' + (err.message || String(err)), 'error');
     dbLog('deleteKategori fejlede', err.message);
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.114: Produkter pr. kategori — modal med liste + søg + tilføj/fjern
+// ──────────────────────────────────────────────────────────────────────
+
+// Bygger en katpcache: array af { sku, name, brand, productType, source, fromSS, currentKat, isOverride }
+// fra det globale garments-array. Genberegnes ved hver modal-åbning så vi har frisk data.
+function buildKatProduktCache() {
+  const all = (typeof window.__getGarments === 'function')
+    ? window.__getGarments()
+    : (window.garments || []);
+  return all.filter(g => g && g.sku).map(g => {
+    const fakeGl = {
+      sku: g.sku,
+      name: g.name || '',
+      productType: g.productType || g.product_type || '',
+      product_type: g.productType || g.product_type || ''
+    };
+    const isOverride = !!(window._kategoriOverrides && window._kategoriOverrides[g.sku]);
+    const currentKat = getProductCategory(fakeGl);
+    return {
+      sku: g.sku,
+      name: g.name || '',
+      brand: g.brand || '',
+      productType: g.productType || g.product_type || '',
+      source: g.fromSS ? 'stanley' : 'lshop',
+      fromSS: !!g.fromSS,
+      currentKat,
+      isOverride
+    };
+  });
+}
+
+// Aktuel state for produkt-modal (cache + filter + mode)
+let _katProduktModalState = {
+  katKey: null,
+  katLabel: '',
+  cache: [],
+  searchQuery: '',
+  mode: 'list'   // 'list' eller 'add'
+};
+
+// Åbn modal med produkter for en kategori
+function openKategoriProdukter(katId, katKey) {
+  const kat = (window._kategorier || []).find(k => k.id === katId)
+           || getCategoryByKey(katKey);
+  if (!kat) {
+    showToast('Kategori ikke fundet', 'error');
+    return;
+  }
+
+  _katProduktModalState = {
+    katKey: kat.key,
+    katLabel: kat.label || kat.key,
+    cache: buildKatProduktCache(),
+    searchQuery: '',
+    mode: 'list'
+  };
+
+  // Byg modal-DOM
+  const overlay = document.createElement('div');
+  overlay.className = 'kat-modal-overlay';
+  overlay.id = 'katProduktModalOverlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'kat-modal';
+  modal.innerHTML = ''
+    + '<div class="kat-modal-header">'
+    +   '<div class="kat-modal-title" id="katProduktModalTitle">Produkter i ' + escapeHtml(_katProduktModalState.katLabel) + '</div>'
+    +   '<button class="kat-modal-close" onclick="closeKategoriProdukterModal()" title="Luk">&times;</button>'
+    + '</div>'
+    + '<div class="kat-modal-body" id="katProduktModalBody"></div>';
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  overlay.onclick = (e) => { if (e.target === overlay) closeKategoriProdukterModal(); };
+  document.addEventListener('keydown', katProduktKeyHandler);
+
+  renderKategoriProdukterContent();
+}
+
+function katProduktKeyHandler(e) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeKategoriProdukterModal();
+  }
+}
+
+function closeKategoriProdukterModal() {
+  const overlay = document.getElementById('katProduktModalOverlay');
+  if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  document.removeEventListener('keydown', katProduktKeyHandler);
+  _katProduktModalState = { katKey: null, katLabel: '', cache: [], searchQuery: '', mode: 'list' };
+}
+
+// Render content baseret på modal-state
+function renderKategoriProdukterContent() {
+  const body = document.getElementById('katProduktModalBody');
+  if (!body) return;
+
+  if (_katProduktModalState.mode === 'list') {
+    renderKategoriProdukterListMode(body);
+  } else {
+    renderKategoriProdukterAddMode(body);
+  }
+}
+
+// LIST-mode: vis alle produkter mappet til denne kategori
+function renderKategoriProdukterListMode(body) {
+  const { katKey, katLabel, cache, searchQuery } = _katProduktModalState;
+
+  // Filtrér til produkter hvis nuværende kategori = denne kategori
+  let inKat = cache.filter(p => p.currentKat === katKey);
+
+  // Søge-filter (live)
+  const q = (searchQuery || '').trim().toLowerCase();
+  if (q) {
+    inKat = inKat.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      p.brand.toLowerCase().includes(q)
+    );
+  }
+
+  const overrideCount = inKat.filter(p => p.isOverride).length;
+  const autoCount = inKat.length - overrideCount;
+
+  body.innerHTML = ''
+    + '<button class="kat-prod-add-btn" onclick="switchToAddMode()">+ Tilføj produkt til ' + escapeHtml(katLabel) + '</button>'
+    + '<input type="text" class="kat-prod-search" id="katProduktSearchInput" placeholder="Søg i listen — navn, SKU eller brand…" value="' + escapeHtml(searchQuery) + '" oninput="onKatProduktSearchInput(this.value)">'
+    + '<div class="kat-prod-stats"><strong>' + inKat.length + '</strong> produkt' + (inKat.length === 1 ? '' : 'er')
+    + (q ? ' fundet (filtreret)' : '')
+    + ' · ★ ' + overrideCount + ' gemt · ○ ' + autoCount + ' auto-detected</div>'
+    + '<div class="kat-prod-list" id="katProduktList">' + buildProduktRowsHtml(inKat) + '</div>';
+
+  // Auto-fokus på search-input hvis der er noget at søge i
+  if (inKat.length > 5 || cache.length > 50) {
+    setTimeout(() => {
+      const inp = document.getElementById('katProduktSearchInput');
+      if (inp && !q) inp.focus();
+    }, 50);
+  }
+}
+
+function buildProduktRowsHtml(produkter) {
+  if (produkter.length === 0) {
+    return '<div class="kat-prod-empty">Ingen produkter matcher.</div>';
+  }
+  return produkter.map(p => {
+    const iconHtml = p.isOverride
+      ? '<span class="kat-prod-icon saved" title="Gemt override">★</span>'
+      : '<span class="kat-prod-icon auto" title="Auto-detekteret fra navn/type">○</span>';
+    const sourceClass = p.fromSS ? 'stanley' : 'lshop';
+    const sourceLabel = p.fromSS ? 'Stanley' : 'L-shop';
+    const removeBtn = p.isOverride
+      ? '<button class="kat-prod-remove" onclick="removeProduktFromKategori(\'' + escapeHtml(p.sku).replace(/'/g, '&#39;') + '\')" title="Fjern gemt mapping — produktet falder tilbage til auto-detect">Fjern</button>'
+      : '';
+    return ''
+      + '<div class="kat-prod-row" data-sku="' + escapeHtml(p.sku) + '">'
+      +   iconHtml
+      +   '<div class="kat-prod-info">'
+      +     '<span class="kat-prod-sku">' + escapeHtml(p.sku) + '</span>'
+      +     '<span class="kat-prod-name">' + escapeHtml(p.name || p.sku) + '</span>'
+      +   '</div>'
+      +   '<span class="kat-prod-source ' + sourceClass + '">' + sourceLabel + '</span>'
+      +   '<div class="kat-prod-actions">' + removeBtn + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+// Live-søg: kun re-render listen, ikke hele modal'en (bevarer fokus + cursor)
+function onKatProduktSearchInput(value) {
+  _katProduktModalState.searchQuery = value || '';
+  if (_katProduktModalState.mode === 'list') {
+    // Genberegn kun den filtrerede liste — ikke hele modal'en
+    const { katKey, cache, searchQuery } = _katProduktModalState;
+    const q = (searchQuery || '').trim().toLowerCase();
+    let inKat = cache.filter(p => p.currentKat === katKey);
+    if (q) {
+      inKat = inKat.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        p.brand.toLowerCase().includes(q)
+      );
+    }
+    const listEl = document.getElementById('katProduktList');
+    if (listEl) listEl.innerHTML = buildProduktRowsHtml(inKat);
+    // Opdater stats
+    const overrideCount = inKat.filter(p => p.isOverride).length;
+    const autoCount = inKat.length - overrideCount;
+    const statsEl = document.querySelector('.kat-prod-stats');
+    if (statsEl) {
+      statsEl.innerHTML = '<strong>' + inKat.length + '</strong> produkt' + (inKat.length === 1 ? '' : 'er')
+        + (q ? ' fundet (filtreret)' : '')
+        + ' · ★ ' + overrideCount + ' gemt · ○ ' + autoCount + ' auto-detected';
+    }
+  } else {
+    // Add-mode: re-render hele add-mode body
+    renderKategoriProdukterAddMode(document.getElementById('katProduktModalBody'));
+  }
+}
+
+// Skift til ADD-mode: søg blandt ALLE produkter for at tilføje til denne kategori
+function switchToAddMode() {
+  _katProduktModalState.mode = 'add';
+  _katProduktModalState.searchQuery = '';
+  // Opdater modal-titel
+  const titleEl = document.getElementById('katProduktModalTitle');
+  if (titleEl) titleEl.textContent = 'Tilføj produkt til ' + _katProduktModalState.katLabel;
+  renderKategoriProdukterContent();
+}
+
+function switchToListMode() {
+  _katProduktModalState.mode = 'list';
+  _katProduktModalState.searchQuery = '';
+  // Genopfrisk cache så ændringer afspejles
+  _katProduktModalState.cache = buildKatProduktCache();
+  const titleEl = document.getElementById('katProduktModalTitle');
+  if (titleEl) titleEl.textContent = 'Produkter i ' + _katProduktModalState.katLabel;
+  renderKategoriProdukterContent();
+
+  // Opdater også produkt-tæller på selve kategori-listen i baggrunden
+  if (typeof renderKategoriProdukterCounts === 'function') renderKategoriProdukterCounts();
+}
+
+// ADD-mode rendering
+function renderKategoriProdukterAddMode(body) {
+  const { katKey, katLabel, cache, searchQuery } = _katProduktModalState;
+  const q = (searchQuery || '').trim().toLowerCase();
+
+  let results = cache;
+  if (q) {
+    results = cache.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      p.brand.toLowerCase().includes(q)
+    ).slice(0, 100);  // Begræns til 100 for performance
+  } else {
+    results = [];  // Tom default — søg er obligatorisk
+  }
+
+  const resultsHtml = q === ''
+    ? '<div class="kat-prod-empty">Skriv i søgefeltet for at finde produkter…</div>'
+    : (results.length === 0
+        ? '<div class="kat-prod-empty">Ingen produkter matcher "' + escapeHtml(q) + '"</div>'
+        : results.map(p => {
+            const sourceClass = p.fromSS ? 'stanley' : 'lshop';
+            const sourceLabel = p.fromSS ? 'Stanley' : 'L-shop';
+            const currentKatLabel = getCategoryByKey(p.currentKat)?.label || p.currentKat;
+            const isAlreadyInThisKat = (p.currentKat === katKey);
+            const btnHtml = isAlreadyInThisKat
+              ? '<span class="kat-prod-add-current">allerede i denne kategori</span>'
+              : '<button class="kat-prod-add-btn-row" onclick="selectProduktToAdd(\'' + escapeHtml(p.sku).replace(/'/g, '&#39;') + '\')">Tilføj →</button>';
+            return ''
+              + '<div class="kat-prod-add-row">'
+              +   '<div class="kat-prod-info">'
+              +     '<span class="kat-prod-sku">' + escapeHtml(p.sku) + '</span>'
+              +     '<span class="kat-prod-name">' + escapeHtml(p.name || p.sku) + '</span>'
+              +     '<div style="font-size:10px;color:var(--muted);margin-top:2px">Aktuel: <em>' + escapeHtml(currentKatLabel) + '</em>' + (p.isOverride ? ' (★ gemt)' : ' (auto)') + '</div>'
+              +   '</div>'
+              +   '<span class="kat-prod-source ' + sourceClass + '">' + sourceLabel + '</span>'
+              +   btnHtml
+              + '</div>';
+          }).join('') + (results.length >= 100 ? '<div class="kat-prod-empty" style="padding:10px;font-size:11px">Viser top 100 — forfin søgningen</div>' : ''));
+
+  body.innerHTML = ''
+    + '<button class="kat-back-btn" onclick="switchToListMode()">← Tilbage til listen</button>'
+    + '<input type="text" class="kat-prod-search" id="katProduktSearchInput" placeholder="Søg på navn, SKU eller brand…" value="' + escapeHtml(searchQuery) + '" oninput="onKatProduktSearchInput(this.value)">'
+    + '<div class="kat-prod-stats">' + (q ? results.length + ' resultater' : 'Skriv for at søge…') + '</div>'
+    + '<div class="kat-prod-list">' + resultsHtml + '</div>';
+
+  // Auto-fokus på search-input
+  setTimeout(() => {
+    const inp = document.getElementById('katProduktSearchInput');
+    if (inp) {
+      inp.focus();
+      // Sæt cursor til slutningen
+      const len = inp.value.length;
+      inp.setSelectionRange(len, len);
+    }
+  }, 50);
+}
+
+// Tilføj produkt til kategori (UPSERT på sku)
+async function selectProduktToAdd(sku) {
+  if (!sku) return;
+  const katKey = _katProduktModalState.katKey;
+  if (!katKey) return;
+
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    showToast('Supabase ikke klar', 'error');
+    return;
+  }
+
+  // Bestem source ud fra cache
+  const item = _katProduktModalState.cache.find(p => p.sku === sku);
+  const sourceVal = item ? (item.fromSS ? 'stanley' : 'lshop') : null;
+
+  try {
+    const { error } = await sb
+      .from('produkt_kategori_overrides')
+      .upsert({ sku, category_key: katKey, source: sourceVal }, { onConflict: 'sku' });
+    if (error) throw error;
+
+    window._kategoriOverrides[sku] = katKey;
+    showToast('Produkt tilføjet til ' + _katProduktModalState.katLabel, 'success');
+
+    // Opdater cache lokalt — produktet har nu denne kategori
+    _katProduktModalState.cache = buildKatProduktCache();
+
+    // Re-render add-mode (så brugeren kan se "allerede i denne kategori"-state)
+    renderKategoriProdukterContent();
+
+    // Re-render kategori-listen i baggrunden (tællere skal opdateres når modal lukkes)
+    // Vi opdaterer ikke listen automatisk her, det sker i closeKategoriProdukterModal hvis
+    // brugeren skifter mellem mode.
+  } catch (err) {
+    showToast('Fejl: ' + (err.message || String(err)), 'error');
+    dbLog('selectProduktToAdd fejlede', err.message);
+  }
+}
+
+// Fjern gemt override (DELETE) — produktet falder tilbage til auto-detect
+async function removeProduktFromKategori(sku) {
+  if (!sku) return;
+  const ok = await showConfirm(
+    'Fjern gemt mapping for ' + sku + '?\n\nProduktet falder tilbage til auto-detect baseret på navn og produkttype.',
+    null
+  );
+  if (!ok) return;
+
+  const success = await deleteKategoriOverride(sku);
+  if (!success) {
+    showToast('Kunne ikke fjerne mapping', 'error');
+    return;
+  }
+
+  showToast('Mapping fjernet for ' + sku, 'success');
+
+  // Opdater cache + re-render
+  _katProduktModalState.cache = buildKatProduktCache();
+  renderKategoriProdukterContent();
 }
 
 // ──────────────────────────────────────────────────────────────────────
