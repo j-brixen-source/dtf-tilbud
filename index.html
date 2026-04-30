@@ -4,12 +4,19 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.085
+  Version: 1.086
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.085  (2026-04-29)  ⭐ Aktuel — Fix object-fit: contain bug i warning-detektion
+  v1.086  (2026-04-30)  ⭐ Aktuel — Felter 50% større + sleeve-zone-fix
+          • Felt-bokse: 150×210 → 225×315 (front/back), 75×100 → 112×150 (sleeves)
+          • Bedre synlighed af designs
+          • FIX: 10×10 cm zone på ærmer er nu kvadratisk (var rektangulær før)
+          • Indførelse af SLEEVE_CANVAS_CM (22.5×30 cm) reference for sleeves
+          • Warning-beregning opdateret til nye box-dimensioner
+
+  v1.085  (2026-04-29) — Fix object-fit: contain bug i warning-detektion
           • Tidligere: warning-beregning antog billedet fyldte hele zonen
           • Det er forkert — billedet vises med object-fit: contain, så
             non-square billeder fylder kun en del af zonen (bredden eller højden)
@@ -354,7 +361,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.085 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.086 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -654,8 +661,8 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.079: bump til 360px for at rumme slider når design er uploadet */
-    min-height: 360px;
+    /* v1.086: bump til 470px for at rumme 315px tall felt (50% større) + alle infolinjer */
+    min-height: 470px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -677,9 +684,9 @@
     background-repeat: no-repeat;
     overflow: hidden;
   }
-  .design-zone-box.front  { width: 150px; height: 210px; }
-  .design-zone-box.back   { width: 150px; height: 210px; }
-  .design-zone-box.sleeve { width: 75px; height: 100px; }
+  .design-zone-box.front  { width: 225px; height: 315px; }
+  .design-zone-box.back   { width: 225px; height: 315px; }
+  .design-zone-box.sleeve { width: 112px; height: 150px; }
   /* Inaktiv: faded + plus-symbol */
   .design-zone-box:not(.active):not(.disabled) { opacity: 0.55; }
   .design-zone-box:not(.active):not(.disabled):hover { opacity: 0.85; border-color: rgba(0,0,0,0.3); }
@@ -1556,7 +1563,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.085
+    v1.086
   </div>
 </div>
 
@@ -1649,7 +1656,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.085 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.086 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4280,19 +4287,19 @@ function getDesignDpi(design, dimCm) {
 
 // T-shirt canvas størrelse i cm (fladlagt). Bruges som reference for proportional zone.
 const TSHIRT_CANVAS_CM = { w: 50, h: 70 };
+// v1.086: Sleeve-canvas så zonen bliver visuelt korrekt — kvadratiske mål er kvadratiske.
+// Aspect (22.5/30 = 0.75) matcher sleeve-felt-boksens aspect (112/150 = 0.747)
+const SLEEVE_CANVAS_CM = { w: 22.5, h: 30 };
 
 // Beregn tryk-zone størrelse i procent af felt-boksen
 // (dvs. cm-mål / canvas-størrelse)
 function getTrykZonePercent(pos, dimCm) {
   if (!dimCm || !dimCm.w || !dimCm.h) return null;
   const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
-  if (isSleeve) {
-    // Sleeves: tryk-zonen fylder altid 80% af sleeve-feltet (da feltet er lille)
-    return { wPct: 80, hPct: 80 };
-  }
-  // Forside/bagside: cm-mål i forhold til t-shirt-canvas
-  const wPct = Math.min(100, (dimCm.w / TSHIRT_CANVAS_CM.w) * 100);
-  const hPct = Math.min(100, (dimCm.h / TSHIRT_CANVAS_CM.h) * 100);
+  // v1.086: Sleeves bruger nu sleeve-canvas, så 10×10 cm bliver kvadratisk
+  const canvas = isSleeve ? SLEEVE_CANVAS_CM : TSHIRT_CANVAS_CM;
+  const wPct = Math.min(100, (dimCm.w / canvas.w) * 100);
+  const hPct = Math.min(100, (dimCm.h / canvas.h) * 100);
   return { wPct, hPct };
 }
 
@@ -4426,8 +4433,9 @@ function isDesignContentOutsideBox(design) {
   // Felt-boks dimensioner i px — sleeves er 75×100, front/back er 150×210
   // Vi gemmer pos-typen (sleeve eller front/back) som 'positionType' på designet
   const isSleeveBox = (design.positionType === 'sleeve');
-  const boxW = isSleeveBox ? 75 : 150;
-  const boxH = isSleeveBox ? 100 : 210;
+  // v1.086: nye felt-boks dimensioner (50% større)
+  const boxW = isSleeveBox ? 112 : 225;
+  const boxH = isSleeveBox ? 150 : 315;
   const boxAspect = boxW / boxH;
   // Zone aspect i pixels = (zoneW% × boxW) / (zoneH% × boxH) = zoneW/zoneH × boxAspect
   const zoneAspect = (zoneW / zoneH) * boxAspect;
