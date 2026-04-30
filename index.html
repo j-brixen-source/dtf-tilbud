@@ -4,12 +4,22 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.100
+  Version: 1.101
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.100  (2026-04-30)  ⭐ Aktuel — Fix v1.099 PDF-mockup positions
+  v1.101  (2026-04-30)  ⭐ Aktuel — PDF-layout pr. linje + farve + mindre mockups
+          • Tilbud-PDF: TRYK-tabel + TRYKBILLEDER er nu pr. tøjlinje
+            (samlet i én "TRYK & TRYKBILLEDER"-sektion, men hver tøjlinje får
+            sin egen mini tryk-tabel + mockups direkte under sig)
+          • Tilbud-PDF: Tilføjet Farve-kolonne (mellem Størrelser og Antal)
+          • Ordreseddel-PDF: Flyttet Farve-kolonne (mellem Størrelser og Antal)
+          • Mockups 50% mindre (2 felter: 50×70 → 25×35 mm). De fylder ikke
+            længere så meget på siden.
+          • Ny helper pdfRenderMockupsForOneLine til single-linje rendering
+
+  v1.100  (2026-04-30) — Fix v1.099 PDF-mockup positions
           • FIX: PDF-mockups havde forkert position-fallback (0,0 = top-left)
             når design.position ikke var sat. UI bruger getDefaultDesignPosition.
             Nu bruger renderDesignMockup samme logic som UI.
@@ -485,7 +495,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.100 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.101 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1863,7 +1873,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.100
+    v1.101
   </div>
 </div>
 
@@ -1956,7 +1966,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.100 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.101 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4966,77 +4976,91 @@ async function pdfRenderDesignsForLines(doc, garmentLines, startY, margin) {
   doc.text('TRYKBILLEDER', margin, y);
   y += 5;
 
-  const pageHeight = doc.internal.pageSize.getHeight();
-
   for (const gl of linesWithDesigns) {
-    const activePositions = POS_META.filter(m => gl.designs[m.key]);
-    if (activePositions.length === 0) continue;
-
-    // Page-break check (~80mm pr. linje)
-    if (y > pageHeight - 80) {
-      doc.addPage();
-      y = margin;
-    }
-
     // Produkt-navn
     doc.setFont('helvetica','bold');
     doc.setFontSize(10);
     doc.setTextColor(...PDF_COLORS.text);
     const prodLabel = `${gl.name||'—'}${gl.sku?' · '+gl.sku:''}${gl.selectedColor?' · '+gl.selectedColor:''}`;
     doc.text(prodLabel, margin, y);
-    y += 5;
+    y += 4;
 
-    // Mockup-størrelse i mm — afhænger af antal positioner
-    const N = activePositions.length;
-    let cellW, cellH;
-    if (N <= 2)      { cellW = 50; cellH = 70; }
-    else if (N === 3) { cellW = 45; cellH = 63; }
-    else              { cellW = 38; cellH = 53; }
-
-    const gap = 6; // mm
-    let x = margin;
-    let maxH = 0;
-    for (const m of activePositions) {
-      const isSleeve = (m.key === 'sleeve_l' || m.key === 'sleeve_r');
-      const w = isSleeve ? cellW * 0.5 : cellW;
-      const h = isSleeve ? cellH * 0.5 : cellH;
-
-      // Position-label over mockup
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(7);
-      doc.setTextColor(...PDF_COLORS.muted);
-      doc.text(m.title.toUpperCase(), x + w/2, y + 3, {align:'center'});
-
-      // Mockup-billede
-      const dataUrl = await renderDesignMockup(gl, m.key);
-      if (dataUrl) {
-        doc.addImage(dataUrl, 'PNG', x, y + 5, w, h);
-      }
-
-      // Tekst under mockup: cm-størrelse
-      const design = gl.designs[m.key];
-      const posSize = gl.positions?.[m.key]?.size || (isSleeve ? 'small' : 'large');
-      const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(m.key, posSize) : null;
-      let dimText = '—';
-      if (design && dimCm && typeof design.scalePercent === 'number') {
-        const sc = design.scalePercent / 100;
-        const sw = (dimCm.w * sc);
-        const sh = (dimCm.h * sc);
-        const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.',',');
-        dimText = `${fmt(sw)} × ${fmt(sh)} cm`;
-      }
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(7);
-      doc.setTextColor(...PDF_COLORS.text);
-      doc.text(dimText, x + w/2, y + 5 + h + 3.5, {align:'center'});
-
-      if (h > maxH) maxH = h;
-      x += w + gap;
-    }
-    y += 5 + maxH + 8;
+    y = await pdfRenderMockupsForOneLine(doc, gl, y, margin);
+    y += 4;
   }
 
-  return y + 4;
+  return y + 2;
+}
+
+// v1.101: Render mockups for ÉN tøjlinje. Bruges af både tilbud-PDF (per-linje)
+// og af pdfRenderDesignsForLines (samlet). 50% mindre end v1.100 så de ikke fylder så meget.
+async function pdfRenderMockupsForOneLine(doc, gl, startY, margin) {
+  const POS_META = [
+    {key:'front',    title:'Forside'},
+    {key:'back',     title:'Bagside'},
+    {key:'sleeve_l', title:'V. ærme'},
+    {key:'sleeve_r', title:'H. ærme'}
+  ];
+  let y = startY;
+  if (!gl.designs) return y;
+  const activePositions = POS_META.filter(m => gl.designs[m.key]);
+  if (activePositions.length === 0) return y;
+
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (y > pageHeight - 50) {
+    doc.addPage();
+    y = margin;
+  }
+
+  // v1.101: 50% mindre end før (cellW/cellH halveret)
+  const N = activePositions.length;
+  let cellW, cellH;
+  if (N <= 2)      { cellW = 25; cellH = 35; }
+  else if (N === 3) { cellW = 22; cellH = 31; }
+  else              { cellW = 19; cellH = 26; }
+
+  const gap = 4;
+  let x = margin;
+  let maxH = 0;
+  for (const m of activePositions) {
+    const isSleeve = (m.key === 'sleeve_l' || m.key === 'sleeve_r');
+    const w = isSleeve ? cellW * 0.5 : cellW;
+    const h = isSleeve ? cellH * 0.5 : cellH;
+
+    // Position-label over mockup
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(6);
+    doc.setTextColor(...PDF_COLORS.muted);
+    doc.text(m.title.toUpperCase(), x + w/2, y + 2, {align:'center'});
+
+    // Mockup-billede
+    const dataUrl = await renderDesignMockup(gl, m.key);
+    if (dataUrl) {
+      doc.addImage(dataUrl, 'PNG', x, y + 3, w, h);
+    }
+
+    // Tekst under mockup: cm-størrelse
+    const design = gl.designs[m.key];
+    const posSize = gl.positions?.[m.key]?.size || (isSleeve ? 'small' : 'large');
+    const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(m.key, posSize) : null;
+    let dimText = '—';
+    if (design && dimCm && typeof design.scalePercent === 'number') {
+      const sc = design.scalePercent / 100;
+      const sw = (dimCm.w * sc);
+      const sh = (dimCm.h * sc);
+      const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.',',');
+      dimText = `${fmt(sw)} × ${fmt(sh)} cm`;
+    }
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(6);
+    doc.setTextColor(...PDF_COLORS.text);
+    doc.text(dimText, x + w/2, y + 3 + h + 2.5, {align:'center'});
+
+    if (h > maxH) maxH = h;
+    x += w + gap;
+  }
+  y += 3 + maxH + 5;
+  return y;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -5851,6 +5875,7 @@ function recalc() {
     clothesLines.push({
       name: gl.name||'Tøj',
       sku:  gl.sku||'',
+      farve: gl.selectedColor || '',  // v1.101: farve til PDF-tabeller
       qty:  lineQty,
       salePrice: avgSalePrice,
       total: lineTotal,
@@ -6580,6 +6605,7 @@ async function generateTilbudPDF() {
       cl.name,
       cl.sku || '—',
       cl.sizes || '—',
+      cl.farve || '—',
       String(cl.qty),
       fmtKr(cl.salePrice),
       fmtKr(cl.total)
@@ -6588,7 +6614,7 @@ async function generateTilbudPDF() {
     if(tøjRows.length > 0) {
       doc.autoTable({
         startY: y,
-        head: [['Produkt', 'SKU', 'Størrelser', 'Antal', 'Stk-pris', 'Total']],
+        head: [['Produkt', 'SKU', 'Størrelser', 'Farve', 'Antal', 'Stk-pris', 'Total']],
         body: tøjRows,
         theme: 'plain',
         styles: {
@@ -6607,68 +6633,104 @@ async function generateTilbudPDF() {
         },
         columnStyles: {
           1: { font: 'courier', fontSize: 8 },
-          3: { halign: 'right' },
           4: { halign: 'right' },
           5: { halign: 'right' },
+          6: { halign: 'right' },
         },
         margin: { left: margin, right: margin },
       });
       y = doc.lastAutoTable.finalY + 6;
     }
 
-    // ── Tryk-linjer ──
-    if(d.printLines.length > 0) {
+    // v1.101: Per-linje rendering — tryk-info + mockups under hver tøjlinje
+    // Erstatter den tidligere samlede TRYK-tabel + TRYKBILLEDER-sektion.
+    // Grupper printLines pr. lineIdx
+    const printLinesByLineIdx = {};
+    if (d.printLines && d.printLines.length > 0) {
+      d.printLines.forEach(pl => {
+        if (!printLinesByLineIdx[pl.lineIdx]) printLinesByLineIdx[pl.lineIdx] = [];
+        printLinesByLineIdx[pl.lineIdx].push(pl);
+      });
+    }
+    // Find linjer der har tryk ELLER design uploadet
+    const linesWithPrintOrDesign = garmentLinesData.filter((gl, idx) => {
+      const hasPrint = printLinesByLineIdx[idx] && printLinesByLineIdx[idx].length > 0;
+      const hasDesign = gl.designs && Object.keys(gl.designs).some(k => gl.designs[k]);
+      return hasPrint || hasDesign;
+    });
+
+    if (linesWithPrintOrDesign.length > 0) {
+      // Section overskrift én gang
       doc.setFont('helvetica','bold');
       doc.setFontSize(9);
       doc.setTextColor(...PDF_COLORS.muted);
-      doc.text('TRYK', margin, y);
+      doc.text('TRYK & TRYKBILLEDER', margin, y);
       y += 4;
 
-      // Grupper pr. produkt (lineIdx)
-      const byLine = {};
-      d.printLines.forEach(pl => {
-        if(!byLine[pl.lineIdx]) byLine[pl.lineIdx] = {name: pl.lineName, sku: pl.sku, lines: []};
-        byLine[pl.lineIdx].lines.push(pl);
-      });
+      for (let i = 0; i < garmentLinesData.length; i++) {
+        const gl = garmentLinesData[i];
+        const linePrintLines = printLinesByLineIdx[i] || [];
+        const hasDesign = gl.designs && Object.keys(gl.designs).some(k => gl.designs[k]);
+        if (linePrintLines.length === 0 && !hasDesign) continue;
 
-      const trykRows = [];
-      Object.values(byLine).forEach(grp => {
-        grp.lines.forEach((pl, idx) => {
-          // Første række pr. produkt har produkt-navn + SKU; efterfølgende er tomme
-          const productLabel = idx === 0 ? `${grp.name}${grp.sku?' · '+grp.sku:''}` : '';
-          trykRows.push([productLabel, pl.label, fmtKr(pl.total)]);
-        });
-      });
+        // Page-break check (~70mm minimum for produkt-blok)
+        const pageHeight = doc.internal.pageSize.getHeight();
+        if (y > pageHeight - 70) {
+          doc.addPage();
+          y = margin;
+        }
 
-      doc.autoTable({
-        startY: y,
-        head: [['Produkt', 'Position & størrelse', 'Total']],
-        body: trykRows,
-        theme: 'plain',
-        styles: {
-          fontSize: 9,
-          cellPadding: {top:3, right:4, bottom:3, left:4},
-          textColor: PDF_COLORS.text,
-          lineColor: PDF_COLORS.border,
-          lineWidth: 0.1,
-        },
-        headStyles: {
-          fontStyle: 'bold',
-          textColor: PDF_COLORS.muted,
-          fontSize: 8,
-          lineWidth: {bottom: 0.3},
-        },
-        columnStyles: {
-          0: { fontStyle: 'bold' },
-          2: { halign: 'right' },
-        },
-        margin: { left: margin, right: margin },
-      });
-      y = doc.lastAutoTable.finalY + 3;
+        // Mini tryk-tabel for denne linje (med produkt-info)
+        if (linePrintLines.length > 0) {
+          const trykRowsLine = linePrintLines.map((pl, idx) => {
+            const productLabel = idx === 0
+              ? `${gl.name||'—'}${gl.sku?' · '+gl.sku:''}${gl.selectedColor?' · '+gl.selectedColor:''}`
+              : '';
+            return [productLabel, pl.label, fmtKr(pl.total)];
+          });
+          doc.autoTable({
+            startY: y,
+            head: [['Produkt', 'Position & størrelse', 'Total']],
+            body: trykRowsLine,
+            theme: 'plain',
+            styles: {
+              fontSize: 9,
+              cellPadding: {top:3, right:4, bottom:3, left:4},
+              textColor: PDF_COLORS.text,
+              lineColor: PDF_COLORS.border,
+              lineWidth: 0.1,
+            },
+            headStyles: {
+              fontStyle: 'bold',
+              textColor: PDF_COLORS.muted,
+              fontSize: 8,
+              lineWidth: {bottom: 0.3},
+            },
+            columnStyles: {
+              0: { fontStyle: 'bold' },
+              2: { halign: 'right' },
+            },
+            margin: { left: margin, right: margin },
+          });
+          y = doc.lastAutoTable.finalY + 2;
+        } else if (hasDesign) {
+          // Hvis ingen printLines men design: vis stadig produkt-overskrift
+          doc.setFont('helvetica','bold');
+          doc.setFontSize(10);
+          doc.setTextColor(...PDF_COLORS.text);
+          const prodLabel = `${gl.name||'—'}${gl.sku?' · '+gl.sku:''}${gl.selectedColor?' · '+gl.selectedColor:''}`;
+          doc.text(prodLabel, margin, y);
+          y += 4;
+        }
+
+        // Mockups for denne linje (hvis design uploadet)
+        if (hasDesign) {
+          y = await pdfRenderMockupsForOneLine(doc, gl, y, margin);
+        }
+        y += 4; // spacing mellem linjer
+      }
+      y += 2;
     }
-
-    // v1.099: Tilføj design-mockups (canvas-rendering) efter tryk-tabel
-    y = await pdfRenderDesignsForLines(doc, garmentLinesData, y, margin);
 
     // ── Opstart ──
     if(d.setupTotal > 0) {
@@ -6867,8 +6929,8 @@ async function generateOrdreseddelPDF() {
       prodRows.push([
         gl.name || '—',
         gl.sku,
-        gl.selectedColor || '—',
         sizeDetail,
+        gl.selectedColor || '—',
         String(totalQty),
       ]);
     });
@@ -6876,7 +6938,7 @@ async function generateOrdreseddelPDF() {
     if(prodRows.length > 0) {
       doc.autoTable({
         startY: y,
-        head: [['Produkt', 'SKU', 'Farve', 'Størrelser', 'Antal']],
+        head: [['Produkt', 'SKU', 'Størrelser', 'Farve', 'Antal']],
         body: prodRows,
         theme: 'plain',
         styles: {
