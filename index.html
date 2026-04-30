@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.090
+  Version: 1.091
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.090  (2026-04-30)  ⭐ Aktuel — Layout-justeringer
+  v1.091  (2026-04-30)  ⭐ Aktuel — Layout-justeringer fra John
+          • Antal pr. størrelse: label står nu OVER input (var ved siden af)
+            — fjerner forvirring om hvilken kasse hører til hvilken størrelse
+          • Position-labels (FORSIDE/BAGSIDE/V. ÆRME/H. ÆRME):
+            blå + større font (16px, matcher dim-tallene)
+          • Dropdown-tekst (Stort/Lille): 10px → 15px + blå + bold
+            (matcher dim-tallene under feltet)
+          • Stock-badge flyttet så det sidder oven på input (ikke label)
+
+  v1.090  (2026-04-30) — Filename op + pris i dropdown + større dim-pile
           • Filename + DPI flyttet op lige under feltet (i stedet for under dim)
           • Pris flyttet ind i dropdown-options sammen med størrelse
             (fx "Stort 26 × 35 cm · 35 kr/stk")
@@ -394,7 +403,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.090 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.091 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -700,9 +709,10 @@
     justify-content: flex-start;
   }
   .design-zone-label {
-    font-size: 10px;
-    color: var(--muted);
-    margin-bottom: 4px;
+    /* v1.091: Større + blå (matcher dim-tallene under feltet) */
+    font-size: 16px;
+    color: #185FA5;
+    margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-weight: 500;
@@ -1229,7 +1239,19 @@
   }
   .design-zone.has-size-control.active .design-zone-size { visibility: visible; }
   .design-zone:not(.has-size-control) .design-zone-size { display: none; }
-  .design-zone-size select { width: 100%; font-size: 10px; padding: 2px 4px; }
+  .design-zone-size select {
+    width: 100%;
+    /* v1.091: matcher dim-tal-størrelse (15-16px) */
+    font-size: 15px;
+    padding: 6px 8px;
+    height: auto;
+    font-weight: 500;
+    color: #185FA5;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+  }
   .design-zone-summary {
     font-size: 11px;
     color: var(--muted);
@@ -1289,10 +1311,26 @@
   /* GARMENT LINES v2 */
   .gline { margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--bg); }
   .gline-top { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .gline-sizes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
-  .size-qty { display: flex; align-items: center; gap: 3px; }
-  .size-qty label { font-size: 11px; color: var(--muted); font-weight: 500; min-width: 28px; }
-  .size-qty input { width: 52px; font-size: 12px; padding: 3px 6px; }
+  /* v1.091: Antal-pr-størrelse — label OVER input (klarere alignment) */
+  .gline-sizes { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; margin-top: 4px; }
+  .size-qty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .size-qty label {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    text-align: center;
+  }
+  .size-qty input {
+    width: 52px;
+    font-size: 12px;
+    padding: 3px 6px;
+    text-align: center;
+  }
   .gline-total { font-size: 12px; color: var(--green); font-weight: 500; margin-left: auto; }
   .size-select { font-size: 12px; padding: 4px 6px; }
 
@@ -1481,9 +1519,10 @@
 
   /* Lagerstatus badge på størrelse */
   .size-qty { position: relative; }
+  /* v1.091: stock-badge oven på input (label sidder nu over input) */
   .size-stock {
     position: absolute;
-    top: -6px; right: -4px;
+    top: 9px; right: -4px;
     font-size: 9px;
     background: var(--green);
     color: white;
@@ -1491,6 +1530,7 @@
     border-radius: 6px;
     font-weight: 500;
     line-height: 1;
+    z-index: 2;
   }
   .size-stock.low { background: var(--amber); }
   .size-stock.out { background: #ccc; }
@@ -1726,7 +1766,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.090
+    v1.091
   </div>
 </div>
 
@@ -1819,7 +1859,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.090 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.091 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
