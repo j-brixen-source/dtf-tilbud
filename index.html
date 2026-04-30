@@ -4,12 +4,21 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.093
+  Version: 1.094
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.093  (2026-04-30)  ⭐ Aktuel — Fix v1.092-bugs
+  v1.094  (2026-04-30)  ⭐ Aktuel — DPI-farver + sleeve-fit
+          • DPI-farver opdateret: ≥200 grøn, 100-199 gul, <100 rød
+          • Tilføjet 'dpi-red' CSS-class
+          • FIX: Sleeves blev skåret over fordi container ikke havde plads
+          • Felter gjort mindre: front/back 338×473 → 280×392
+            sleeves 168×225 → 140×187
+          • Gap mellem kolonner: 50px → 40px
+          • Total bredde nu ~900px (passer i normal skærmbredde)
+
+  v1.093  (2026-04-30) — Fix v1.092-bugs (TDZ + sleeves wrap)
           • FIX: "Cannot access 'dpiBadgeForDim' before initialization" —
             const-erklæring var efter brugen i dim-badge-byggeriet (TDZ)
             Flyttet erklæringen op til toppen af zones.map()-callback'en
@@ -419,7 +428,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.093 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.094 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -709,13 +718,11 @@
   /* v1.070: Design-zoner — billed-felter pr. trykside */
   .design-zones {
     display: flex;
-    /* v1.088: 50px gap så der er plads til action-knapper til højre for hvert felt */
-    gap: 50px;
+    /* v1.094: 40px gap (mindsket for at passe i 3-kolonne layout) */
+    gap: 40px;
     align-items: flex-start;
-    /* v1.092: ingen wrap — sleeves stables i deres egen kolonne. Hvis vinduet er
-       for smalt, scrolles horizontalt så alle 3 kolonner ses på én linje */
+    /* v1.092: ingen wrap — sleeves stables i deres egen kolonne */
     flex-wrap: nowrap;
-    overflow-x: auto;
     padding: 10px 0;
   }
   /* v1.092: Sleeves stables vertikalt ved siden af bagside */
@@ -735,8 +742,8 @@
     flex-direction: column;
     align-items: center;
     user-select: none;
-    /* v1.088: bump til 640px for at rumme 473px tall felt (50% større igen) + alle infolinjer */
-    min-height: 640px;
+    /* v1.094: bump til 540px for at rumme 392px tall felt + alle infolinjer */
+    min-height: 540px;
     justify-content: flex-start;
   }
   .design-zone-label {
@@ -759,9 +766,9 @@
     background-repeat: no-repeat;
     overflow: hidden;
   }
-  .design-zone-box.front  { width: 338px; height: 473px; }
-  .design-zone-box.back   { width: 338px; height: 473px; }
-  .design-zone-box.sleeve { width: 168px; height: 225px; }
+  .design-zone-box.front  { width: 280px; height: 392px; }
+  .design-zone-box.back   { width: 280px; height: 392px; }
+  .design-zone-box.sleeve { width: 140px; height: 187px; }
   /* Inaktiv: faded + plus-symbol */
   .design-zone-box:not(.active):not(.disabled) { opacity: 0.55; }
   .design-zone-box:not(.active):not(.disabled):hover { opacity: 0.85; border-color: rgba(0,0,0,0.3); }
@@ -1012,6 +1019,8 @@
   .design-zone-dpi.dpi-green  { background: #d1f7d6; color: #185b1f; }
   .design-zone-dpi.dpi-orange { background: #ffe6cc; color: #8a3a00; }
   .design-zone-dpi.dpi-yellow { background: #fff5b8; color: #8a6800; }
+  /* v1.094: rød for DPI < 100 (utilstrækkelig opløsning) */
+  .design-zone-dpi.dpi-red    { background: #ffd6d6; color: #8a1a1a; }
 
   /* ──────────────────────────────────────────────────────────
      v1.077: Proportional tryk-zone + drag-rundt-design
@@ -1797,7 +1806,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.093
+    v1.094
   </div>
 </div>
 
@@ -1890,7 +1899,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.093 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.094 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4513,9 +4522,11 @@ function getDesignDpi(design, dimCm) {
   if (!actualCmW) return null;
   // 1 inch = 2.54 cm  →  px / cm * 2.54 = DPI
   const dpiW = (design.width / actualCmW) * 2.54;
-  let level = 'green';
-  if (dpiW < 200) level = 'yellow';
-  else if (dpiW < 300) level = 'orange';
+  // v1.094: Nye thresholds — ≥200 grøn, 100-199 gul, <100 rød
+  let level;
+  if (dpiW < 100)      level = 'red';
+  else if (dpiW < 200) level = 'yellow';
+  else                 level = 'green';
   return { dpi: Math.round(dpiW), level };
 }
 
@@ -4677,9 +4688,9 @@ function isDesignContentOutsideBox(design) {
   // Felt-boks dimensioner i px — sleeves er 75×100, front/back er 150×210
   // Vi gemmer pos-typen (sleeve eller front/back) som 'positionType' på designet
   const isSleeveBox = (design.positionType === 'sleeve');
-  // v1.088: nye felt-boks dimensioner (50% større igen)
-  const boxW = isSleeveBox ? 168 : 338;
-  const boxH = isSleeveBox ? 225 : 473;
+  // v1.094: nye felt-boks dimensioner (lidt mindre for at passe i 3-kolonne layout)
+  const boxW = isSleeveBox ? 140 : 280;
+  const boxH = isSleeveBox ? 187 : 392;
   const boxAspect = boxW / boxH;
   // Zone aspect i pixels = (zoneW% × boxW) / (zoneH% × boxH) = zoneW/zoneH × boxAspect
   const zoneAspect = (zoneW / zoneH) * boxAspect;
