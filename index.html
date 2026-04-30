@@ -4,12 +4,23 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.099
+  Version: 1.100
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.099  (2026-04-30)  ⭐ Aktuel — Design-mockups på PDF'er (canvas API)
+  v1.100  (2026-04-30)  ⭐ Aktuel — Fix v1.099 PDF-mockup positions
+          • FIX: PDF-mockups havde forkert position-fallback (0,0 = top-left)
+            når design.position ikke var sat. UI bruger getDefaultDesignPosition.
+            Nu bruger renderDesignMockup samme logic som UI.
+          • FIX: Zone-størrelse-fallback (80% × 80%) matchede ikke UI's
+            beregning fra getTrykZonePercent. Nu beregnes zonePct hver gang.
+          • FIX: Sleeve-mockups var blanke pga. forkert zone-størrelse —
+            nu rendereres designs korrekt på alle 4 positioner
+          • Hvis billede-load fejler: returner stadig canvas med baggrund
+            (i stedet for null) så bruger ser at felt eksisterer
+
+  v1.099  (2026-04-30) — Design-mockups på PDF'er (canvas API)
           • Nye helpers: loadImageForCanvas, renderDesignMockup, pdfRenderDesignsForLines
           • Tilføjet TRYKBILLEDER-sektion på både tilbud-PDF og ordreseddel-PDF
           • Hver tøjlinje med design uploadet får alle aktive positioner
@@ -474,7 +485,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.099 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.100 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1852,7 +1863,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.099
+    v1.100
   </div>
 </div>
 
@@ -1945,7 +1956,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.099 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.100 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout()" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4859,11 +4870,30 @@ async function renderDesignMockup(gl, pos, outputW, outputH) {
   ctx.closePath();
   ctx.fill();
 
-  // Beregn zone-position + størrelse i pixels
-  const zoneLeftPx = (design.position?.x || 0) / 100 * W;
-  const zoneTopPx  = (design.position?.y || 0) / 100 * H;
-  const zoneWPx    = (design.zoneWidthPct  || 80) / 100 * W;
-  const zoneHPx    = (design.zoneHeightPct || 80) / 100 * H;
+  // v1.100: Brug SAMME default-beregning som UI — fixer position-fallback (var 0,0)
+  // og zone-størrelse-fallback (var 80%) som ikke matchede UI
+  const posSize = gl.positions?.[pos]?.size || (isSleeve ? 'small' : 'large');
+  const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(pos, posSize) : null;
+  const zonePct = (typeof getTrykZonePercent === 'function' && dimCm) ? getTrykZonePercent(pos, dimCm) : null;
+  const defPos = (zonePct && typeof getDefaultDesignPosition === 'function')
+    ? getDefaultDesignPosition(pos, zonePct, dimCm)
+    : { x: 50, y: 50 };
+
+  const savedPos = design.position;
+  const posXpct = (savedPos && typeof savedPos.x === 'number') ? savedPos.x : defPos.x;
+  const posYpct = (savedPos && typeof savedPos.y === 'number') ? savedPos.y : defPos.y;
+
+  const scalePct = (typeof design.scalePercent === 'number') ? design.scalePercent : 100;
+  // baseZoneWidthPct/HeightPct kan være sat fra UI-render — ellers beregnes fra zonePct
+  const baseW = (typeof design.baseZoneWidthPct  === 'number') ? design.baseZoneWidthPct  : (zonePct ? zonePct.wPct : 80);
+  const baseH = (typeof design.baseZoneHeightPct === 'number') ? design.baseZoneHeightPct : (zonePct ? zonePct.hPct : 80);
+  const zoneWpct = (baseW * scalePct) / 100;
+  const zoneHpct = (baseH * scalePct) / 100;
+
+  const zoneLeftPx = posXpct / 100 * W;
+  const zoneTopPx  = posYpct / 100 * H;
+  const zoneWPx    = zoneWpct / 100 * W;
+  const zoneHPx    = zoneHpct / 100 * H;
 
   // Load design-billede
   const isImage = (design.type === 'image/png' || design.type === 'image/jpeg' || design.type === 'image/svg+xml');
@@ -4883,7 +4913,7 @@ async function renderDesignMockup(gl, pos, outputW, outputH) {
     img = await loadImageForCanvas(design.url);
   } catch (err) {
     if (typeof dbLog === 'function') dbLog('renderDesignMockup: kunne ikke loade billede', design.url);
-    return null;
+    return canvas.toDataURL('image/png');  // returner stadig baggrund så bruger ser noget
   }
 
   // object-fit: contain — skalér billedet for at passe i zonen, bevar aspect-ratio
