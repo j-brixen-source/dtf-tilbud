@@ -4,12 +4,22 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.120
+  Version: 1.120b
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.120  (2026-05-01)  ⭐ Aktuel — Mockup-billeder i design-zoner (UI)
+  v1.120b (2026-05-01)  ⭐ Aktuel — Fix: kun tøj farves, ikke baggrund
+          • Tidligere: hele design-zone-feltet blev farvet med kundens
+            tøjfarve (også området uden om tøjet)
+          • Nu: lys grå baggrund i feltet (matcher app-bg). Mockup vises
+            i naturlig farve. Et separat farve-overlay-lag bruger
+            mockup-PNG som CSS-mask, så kundens farve KUN tegnes inden
+            for tøj-silhuetten via multiply-blend.
+          • Sleeves uden mockup viser stadig hel-farve som før (ingen
+            mockup → falder tilbage til klassisk farveboks)
+
+  v1.120  (2026-05-01) — Mockup-billeder i design-zoner (UI)
           • 61 mockup-PNG'er commited til /mockups/-mappen i repoet:
               tshirt_a/b/c/d, hoodie_a, zip_hoodie_a/b, polo_a/b,
               cap, sweatpants, jeans, cargo_pants_a/b, vest, varsity_a,
@@ -817,7 +827,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.120 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.120b — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1696,6 +1706,23 @@
   }
   /* v1.120: Mockup-overlay (PNG med transparent baggrund + multiply-blend
      så tøjet farves med kundens valgte tøjfarve fra parent's background-color) */
+  /* v1.120b: To-lags struktur så KUN tøjet farves (ikke baggrunden):
+     - .design-zone-color-fill: tegner kundens farve, masket af mockup-PNG
+       (mask = kun pixels hvor PNG ikke er transparent → kun tøj-silhuet)
+     - .design-zone-mockup: viser selve PNG'en ovenpå med multiply, så
+       sorte sømme/streger forbliver mørke */
+  .design-zone-box .design-zone-color-fill {
+    position: absolute;
+    inset: 0;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    pointer-events: none;
+    z-index: 1;
+  }
   .design-zone-box .design-zone-mockup {
     position: absolute;
     inset: 0;
@@ -1704,12 +1731,12 @@
     background-repeat: no-repeat;
     mix-blend-mode: multiply;
     pointer-events: none;
-    z-index: 1;
+    z-index: 2;
   }
   /* Sørg for at design + zone-indicator + tryk-zone vises ovenpå mockup */
-  .design-zone-box > *:not(.design-zone-mockup) {
+  .design-zone-box > *:not(.design-zone-mockup):not(.design-zone-color-fill) {
     position: relative;
-    z-index: 2;
+    z-index: 3;
   }
   /* v1.116: Felt-størrelse sættes nu dynamisk via inline style baseret på
      kategoriens felt_w/felt_h (cm). Disse CSS-regler holder stadig som fallback
@@ -3007,7 +3034,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.120
+    v1.120b
   </div>
 </div>
 
@@ -3100,7 +3127,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.120 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.120b · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -8342,10 +8369,17 @@ function buildLineTrykSection(i, gl) {
       ? getEffectiveMockup(gl, m.key) : null;
     const mockupUrl = (typeof getMockupUrl === 'function' && mockupKey)
       ? getMockupUrl(mockupKey, m.key) : null;
-    // Build mockup-overlay HTML — vises som baggrund i feltet med multiply-blend
-    const mockupOverlayHtml = mockupUrl
-      ? `<div class="design-zone-mockup" style="background-image:url('${mockupUrl}')"></div>`
-      : '';
+    // v1.120b: To-lags rendering så kun tøjet farves (ikke baggrunden):
+    //   - color-fill: tøjfarve masket af PNG-silhuet (kun INDE i tøjet)
+    //   - mockup: selve PNG'en med multiply så sømme bevares
+    // Når mockup mangler (sleeves), bruger vi gammel hel-farvet baggrund.
+    const mockupOverlayHtml = mockupUrl ? (
+      `<div class="design-zone-color-fill" style="background-color:${tekstilFarve};-webkit-mask-image:url('${mockupUrl}');mask-image:url('${mockupUrl}')"></div>` +
+      `<div class="design-zone-mockup" style="background-image:url('${mockupUrl}')"></div>`
+    ) : '';
+    // v1.120b: Når mockup findes → lys grå baggrund (matcher app-bg).
+    //          Ellers → tøjfarve som baggrund (sleeves uden mockup).
+    const boxBg = mockupUrl ? '#f7f6f3' : tekstilFarve;
 
     // v1.107: Ny tilstand 0 — position ikke tilladt for denne produktkategori
     const isAllowed = allowedPositions.includes(m.key);
@@ -8367,7 +8401,7 @@ function buildLineTrykSection(i, gl) {
       boxDragOver  = `ondragover="handleDesignDragOverAuto(event, ${i}, '${m.key}')"`;
       boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
       boxDrop      = `ondrop="handleDesignDropAuto(event, ${i}, '${m.key}')"`;
-      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
+      boxStyle = `${dynamicSizeStyle}background-color:${boxBg}`;
       boxInner = `
         ${mockupOverlayHtml}
         <div class="design-zone-plus">+</div>
@@ -8380,7 +8414,7 @@ function buildLineTrykSection(i, gl) {
       boxDragOver  = `ondragover="handleDesignDragOver(event, ${i}, '${m.key}')"`;
       boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
       boxDrop      = `ondrop="handleDesignDrop(event, ${i}, '${m.key}')"`;
-      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
+      boxStyle = `${dynamicSizeStyle}background-color:${boxBg}`;
       // Indikator-zone med upload-tekst INDE i den (ingen separat boks)
       let zoneIndicatorHtml = '';
       if (zonePct && currentDim) {
@@ -8404,7 +8438,7 @@ function buildLineTrykSection(i, gl) {
       // v1.079: skalering via slider/handles + warning-detektion
       boxClick = '';
       boxDragOver = boxDragLeave = boxDrop = '';
-      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
+      boxStyle = `${dynamicSizeStyle}background-color:${boxBg}`;
       // Position: brug gemt position eller default
       const savedPos = design.position;
       const defPos = (zonePct ? getDefaultDesignPosition(m.key, zonePct, _dimCm) : { x: 50, y: 50 });
