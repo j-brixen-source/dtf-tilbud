@@ -4,12 +4,30 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.116b
+  Version: 1.117
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.116b (2026-05-01)  ⭐ Aktuel — Default design-position altid centreret
+  v1.117  (2026-05-01)  ⭐ Aktuel — Ekstra-timer til fil-tilretning
+          • Layout-refactor: Produktionstid + Ekstra-timer side om side
+            i 2-kolonne grid (50/50 på desktop, stablet på mobil ≤700px)
+          • NY: Ekstra-timer-knap til at tillægge fil-tilretningstid
+              - 15-min increments (0, 15, 30, 45, 60, ..., 240 min)
+              - Max 4 timer
+              - Ikon: ⏱️
+              - Dropdown viser pris i parentes pr. valg
+              - Pris = (minutter / 60) × extra_hour_rate
+              - Default extra_hour_rate = 600 kr/time (sat i Indstillinger)
+          • NY: Indstilling 'extra_hour_rate' (i Indstillinger > Generelt
+            sammen med setup_fee og order_handling_fee)
+          • Persisteret i Supabase 'indstillinger'-tabel + localStorage
+          • Vises i prisoversigt som egen sektion: "Filtilretning"
+          • Indgår i samme grundlag som ordrehåndtering (ingen rabat)
+          • Inkluderet i moms-grundlag (25% moms ovenpå)
+          • Mobil-optimeret: knapperne stables på smalle skærme
+
+  v1.116b (2026-05-01) — Default design-position altid centreret
           • Fjerner v1.087-specialcase: små designs (≤12×12 cm) blev
             tidligere auto-placeret i øverste-højre hjørne (venstre
             brystplacering). Det skabte forvirring fordi designet
@@ -734,7 +752,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.116b — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.117 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2556,6 +2574,101 @@
   @media (max-width: 700px) {
     .prodtime-grid { grid-template-columns: 1fr; }
   }
+
+  /* v1.117: 2-kolonne layout for produktionstid + ekstra-timer */
+  .delivery-options-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 6px;
+  }
+  @media (max-width: 700px) {
+    .delivery-options-row { grid-template-columns: 1fr; gap: 14px; }
+  }
+  .delivery-options-row .delivery-col {
+    display: flex;
+    flex-direction: column;
+  }
+  .delivery-options-row .delivery-col .col-title {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  /* Når prodtime sidder i 2-kolonne layout, skal kortene stable lodret pga. mindre plads */
+  .delivery-options-row .prodtime-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    flex: 1;
+  }
+
+  /* v1.117: Ekstra-timer-knap (fil-tilretning) */
+  .extra-hours-card {
+    border: 2px solid var(--border2);
+    border-radius: 8px;
+    padding: 14px;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  .extra-hours-card.active {
+    border-color: var(--accent);
+    background: var(--green-bg);
+  }
+  .extra-hours-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .extra-hours-icon {
+    font-size: 26px;
+    line-height: 1;
+  }
+  .extra-hours-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .extra-hours-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .extra-hours-select {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+  }
+  .extra-hours-select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .extra-hours-summary {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+    padding: 6px 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    text-align: center;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .extra-hours-card.active .extra-hours-summary {
+    color: var(--green);
+    font-weight: 500;
+    background: white;
+  }
   .prodtime-card {
     border: 2px solid var(--border2);
     border-radius: 8px;
@@ -2779,7 +2892,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.116b
+    v1.117
   </div>
 </div>
 
@@ -2872,7 +2985,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.116b · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.117 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3023,6 +3136,12 @@
           <div class="field-label">Ordrehåndtering</div>
           <input type="number" id="order_handling_fee" value="75" min="0" step="5" style="width:80px" onchange="persistInput(this)">
           <span style="font-size:12px;color:var(--muted)">kr — fast gebyr pr. tilbud (ingen rabat)</span>
+        </div>
+        <!-- v1.117: Timepris for ekstra arbejdstid (fil-tilretning) -->
+        <div class="field-row" style="margin-bottom:6px">
+          <div class="field-label">Timepris (filtilretning)</div>
+          <input type="number" id="extra_hour_rate" value="600" min="0" step="50" style="width:80px" onchange="persistInput(this); if(typeof renderExtraHoursOptions==='function') renderExtraHoursOptions();">
+          <span style="font-size:12px;color:var(--muted)">kr/time — afregnes pr. 15 min · ekskl. moms</span>
         </div>
         <div class="field-row" style="margin-bottom:6px">
           <div class="field-label">Rabat pr. stk.</div>
@@ -3196,25 +3315,48 @@
         </div>
 
         <div class="sep"></div>
-        <div style="font-size:13px;font-weight:500;margin-bottom:10px">Produktionstid</div>
-        <div class="prodtime-grid">
-          <div class="prodtime-card selected" id="prod_standard" onclick="selectProductionTime('standard')">
-            <div class="prodtime-icon">📦</div>
-            <div class="prodtime-title">Standard</div>
-            <div class="prodtime-sub" id="prod_standard_sub">7 hverdage · +0 kr</div>
-            <div class="prodtime-date" id="prod_standard_date"></div>
+        <div class="delivery-options-row">
+          <!-- v1.117: Venstre kolonne — Produktionstid (flyttet ind i grid) -->
+          <div class="delivery-col">
+            <div class="col-title">Produktionstid</div>
+            <div class="prodtime-grid">
+              <div class="prodtime-card selected" id="prod_standard" onclick="selectProductionTime('standard')">
+                <div class="prodtime-icon">📦</div>
+                <div class="prodtime-title">Standard</div>
+                <div class="prodtime-sub" id="prod_standard_sub">7 hverdage · +0 kr</div>
+                <div class="prodtime-date" id="prod_standard_date"></div>
+              </div>
+              <div class="prodtime-card" id="prod_express" onclick="selectProductionTime('express')">
+                <div class="prodtime-icon">⚡</div>
+                <div class="prodtime-title">Express</div>
+                <div class="prodtime-sub" id="prod_express_sub">4 hverdage · +15% + 300 kr</div>
+                <div class="prodtime-date" id="prod_express_date"></div>
+              </div>
+              <div class="prodtime-card" id="prod_superexpress" onclick="selectProductionTime('superexpress')">
+                <div class="prodtime-icon">🚀</div>
+                <div class="prodtime-title">Super Express</div>
+                <div class="prodtime-sub" id="prod_superexpress_sub">2 hverdage · +20% + 600 kr</div>
+                <div class="prodtime-date" id="prod_superexpress_date"></div>
+              </div>
+            </div>
           </div>
-          <div class="prodtime-card" id="prod_express" onclick="selectProductionTime('express')">
-            <div class="prodtime-icon">⚡</div>
-            <div class="prodtime-title">Express</div>
-            <div class="prodtime-sub" id="prod_express_sub">4 hverdage · +15% + 300 kr</div>
-            <div class="prodtime-date" id="prod_express_date"></div>
-          </div>
-          <div class="prodtime-card" id="prod_superexpress" onclick="selectProductionTime('superexpress')">
-            <div class="prodtime-icon">🚀</div>
-            <div class="prodtime-title">Super Express</div>
-            <div class="prodtime-sub" id="prod_superexpress_sub">2 hverdage · +20% + 600 kr</div>
-            <div class="prodtime-date" id="prod_superexpress_date"></div>
+
+          <!-- v1.117: Højre kolonne — Ekstra-timer (fil-tilretning) -->
+          <div class="delivery-col">
+            <div class="col-title">Ekstra arbejdstid</div>
+            <div class="extra-hours-card" id="extraHoursCard">
+              <div class="extra-hours-header">
+                <span class="extra-hours-icon">⏱️</span>
+                <div>
+                  <div class="extra-hours-title">Filtilretning</div>
+                  <div class="extra-hours-sub">Tid til at klargøre kundens filer</div>
+                </div>
+              </div>
+              <select class="extra-hours-select" id="extraHoursSelect" onchange="setExtraHours(this.value)">
+                <!-- Options bygges dynamisk i renderExtraHoursOptions() -->
+              </select>
+              <div class="extra-hours-summary" id="extraHoursSummary">Ingen ekstra tid</div>
+            </div>
           </div>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:6px">Ordrer modtaget efter kl. 11.00 behandles først næste hverdag</div>
@@ -4453,6 +4595,7 @@ const PERSISTED_SETTING_IDS = [
   'tryk_w_xl',    'tryk_h_xl',
   'tryk_w_sleeve','tryk_h_sleeve',
   'setup_fee', 'order_handling_fee', 'disc_per_unit', 'disc_max',
+  'extra_hour_rate',
   'eur_dkk'
 ];
 
@@ -8217,7 +8360,9 @@ function recalc() {
   const clothesNet=clothesGross-clothesDisc;
 
   // Produktionstid-tillæg: beregnes på (tekstil netto + tryk netto + setup + ordrehåndtering)
-  const subtotalBeforeProdTime = clothesNet + printNet + setupTotal + orderHandlingFee;
+  // v1.117: Ekstra-timer (filtilretning) lægges også til subtotalen før produktionstid-procent
+  const extraHoursCost = getExtraHoursCost();
+  const subtotalBeforeProdTime = clothesNet + printNet + setupTotal + orderHandlingFee + extraHoursCost;
   const prod = getProdTimeCost(subtotalBeforeProdTime);
   const prodTimeCost = prod.total;
   const totalEx=subtotalBeforeProdTime + prodTimeCost;
@@ -8295,6 +8440,18 @@ function recalc() {
   } else {
     html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="color:var(--muted)">📅 Standard leveringsdato: ${formatDate(prod.dato)}</span></div>`;
   }
+  // v1.117: Filtilretning vises som egen sektion hvis valgt
+  if (extraHoursCost > 0) {
+    const m = extraHourMinutes;
+    const hours = Math.floor(m / 60);
+    const mins = m % 60;
+    const timeStr = hours > 0
+      ? (mins > 0 ? hours + ' t ' + mins + ' min' : hours + ' time' + (hours === 1 ? '' : 'r'))
+      : mins + ' min';
+    const rate = getExtraHourRate();
+    html+=`<div class="price-section">Filtilretning</div>`;
+    html+=`<div class="price-line"><span>⏱️ ${timeStr} (${fmtKr(rate)}/time)</span><span>${fmtKr(extraHoursCost)}</span></div>`;
+  }
   html+=`<div class="price-total"><span>Total ekskl. moms</span><span>${fmtKr(totalEx)}</span></div>`;
   html+=`<div class="price-line"><span>Moms 25%</span><span>${fmtKr(moms)}</span></div>`;
   html+=`<div class="price-total" style="font-size:18px"><strong>Total inkl. moms</strong><strong>${fmtKr(totalInc)}</strong></div>`;
@@ -8303,7 +8460,7 @@ function recalc() {
   document.getElementById('m_clothes').textContent=clothesNet.toFixed(0)+' kr';
   document.getElementById('m_print').textContent=printNet.toFixed(0)+' kr';
   document.getElementById('m_total').textContent=totalInc.toFixed(0)+' kr';
-  lastCalc={clothesGross,clothesNet,clothesDisc,clothesLines,printGross,printNet,printDisc,setupTotal,orderHandlingFee,totalEx,moms,totalInc,discPct,totalQty,numPos:totalActivePositions,totalActivePositions,isMaxed,printLines,sizeName,posName,prodTimeCost,prodTimeKey:selectedProdTime,prodTimeData:prod};
+  lastCalc={clothesGross,clothesNet,clothesDisc,clothesLines,printGross,printNet,printDisc,setupTotal,orderHandlingFee,extraHoursCost,extraHourMinutes,totalEx,moms,totalInc,discPct,totalQty,numPos:totalActivePositions,totalActivePositions,isMaxed,printLines,sizeName,posName,prodTimeCost,prodTimeKey:selectedProdTime,prodTimeData:prod};
   return lastCalc;
 }
 
@@ -8581,6 +8738,87 @@ function getProdTimeCost(subtotal) {
   const total = pctFee + p.fee;
   const dato = calcLeveringsdato(p.dage, cfg.cutoffHour);
   return { total, pctFee, fixedFee: p.fee, pct: p.pct, dage: p.dage, dato };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.117: Ekstra arbejdstid (filtilretning) — pr. 15 min, max 4 timer
+// ──────────────────────────────────────────────────────────────────────
+
+// Antal minutter valgt for filtilretning (0 = ingen). Persistes pr. tilbud.
+let extraHourMinutes = 0;
+
+// Hent timepris fra Indstillinger (default 600)
+function getExtraHourRate() {
+  const el = document.getElementById('extra_hour_rate');
+  if (!el) return 600;
+  const v = parseFloat(el.value);
+  return (isFinite(v) && v >= 0) ? v : 600;
+}
+
+// Beregn pris for ekstra-tid (excl. moms)
+function getExtraHoursCost() {
+  const minutes = extraHourMinutes || 0;
+  if (minutes <= 0) return 0;
+  const rate = getExtraHourRate();
+  return (minutes / 60) * rate;
+}
+
+// Generer dropdown-options dynamisk så priser opdateres ved rate-ændring
+function renderExtraHoursOptions() {
+  const sel = document.getElementById('extraHoursSelect');
+  if (!sel) return;
+  const rate = getExtraHourRate();
+  const currentVal = String(extraHourMinutes || 0);
+  let html = '';
+  // 0, 15, 30, 45, ..., 240 = 0 til 4 timer i 15-min increments (17 valg)
+  for (let m = 0; m <= 240; m += 15) {
+    let label;
+    if (m === 0) {
+      label = 'Ingen ekstra tid';
+    } else {
+      const hours = Math.floor(m / 60);
+      const mins = m % 60;
+      const timeStr = hours > 0
+        ? (mins > 0 ? hours + ' t ' + mins + ' min' : hours + ' time' + (hours === 1 ? '' : 'r'))
+        : mins + ' min';
+      const cost = (m / 60) * rate;
+      label = timeStr + ' (+' + fmtKr(cost) + ')';
+    }
+    const sel_attr = (String(m) === currentVal) ? ' selected' : '';
+    html += '<option value="' + m + '"' + sel_attr + '>' + label + '</option>';
+  }
+  sel.innerHTML = html;
+  // Synkronisér summary-tekst
+  updateExtraHoursSummary();
+}
+
+// Opdater den lille summary-tekst under dropdown
+function updateExtraHoursSummary() {
+  const sumEl = document.getElementById('extraHoursSummary');
+  const cardEl = document.getElementById('extraHoursCard');
+  if (!sumEl || !cardEl) return;
+  const m = extraHourMinutes || 0;
+  if (m <= 0) {
+    sumEl.textContent = 'Ingen ekstra tid';
+    cardEl.classList.remove('active');
+  } else {
+    const hours = Math.floor(m / 60);
+    const mins = m % 60;
+    const timeStr = hours > 0
+      ? (mins > 0 ? hours + ' t ' + mins + ' min' : hours + ' time' + (hours === 1 ? '' : 'r'))
+      : mins + ' min';
+    const cost = getExtraHoursCost();
+    sumEl.textContent = timeStr + ' · ' + fmtKr(cost);
+    cardEl.classList.add('active');
+  }
+}
+
+// Bruger valgte ny værdi i dropdown
+function setExtraHours(value) {
+  const m = parseInt(value, 10);
+  extraHourMinutes = (isFinite(m) && m >= 0 && m <= 240) ? m : 0;
+  updateExtraHoursSummary();
+  if (typeof recalc === 'function') recalc();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -9453,6 +9691,9 @@ function clearOrder(){
   const em=document.getElementById('emailInput'); if(em) em.value='';
   const mb=document.getElementById('missingBox'); if(mb) mb.style.display='none';
   garmentLinesData=[defaultGarmentLine()];
+  // v1.117: Nulstil ekstra-tid ved nyt tilbud
+  extraHourMinutes = 0;
+  if (typeof renderExtraHoursOptions === 'function') renderExtraHoursOptions();
   renderGarmentLines(); recalc();
 }
 
@@ -9673,6 +9914,8 @@ function onAuthSuccess() {
   // v1.068: Hent globale settings fra Supabase + start realtime-subscription
   loadSettingsFromSupabase().then(() => {
     subscribeToSettingsChanges();
+    // v1.117: Render extra-hours dropdown når extra_hour_rate er klar
+    if (typeof renderExtraHoursOptions === 'function') renderExtraHoursOptions();
   });
   // v1.112: Hent produkt-kategorier fra Supabase ved app-start (ikke kun ved Tab 2-klik).
   // Re-render tøjlinjer når kategorier er klar så dropdown viser kategoriens sizes.
@@ -10290,6 +10533,7 @@ async function gemTilbud(status='kladde') {
   const linjer = {
     garments: garmentLinesData.filter(g=>g.sku),
     positioner: {}, // v1.050: positioner er nu pr. tøjlinje (i garments[].positions)
+    extraHourMinutes: extraHourMinutes || 0,  // v1.117: gem filtilretningstid
     beregning: calc
   };
   const tilbud = {
@@ -10427,6 +10671,16 @@ function åbnTilbud(id) {
       garmentLinesData.forEach((gl, idx) => gl.trykExpanded = (idx === 0));
     }
   }
+  // v1.117: Genskab ekstra-tid (filtilretning) hvis det blev gemt med tilbuddet
+  // Findes enten direkte på linjer.extraHourMinutes (nye tilbud) eller via beregning (lastCalc)
+  let savedExtraMin = 0;
+  if (t.linjer && typeof t.linjer.extraHourMinutes === 'number') {
+    savedExtraMin = t.linjer.extraHourMinutes;
+  } else if (t.linjer?.beregning && typeof t.linjer.beregning.extraHourMinutes === 'number') {
+    savedExtraMin = t.linjer.beregning.extraHourMinutes;
+  }
+  extraHourMinutes = (isFinite(savedExtraMin) && savedExtraMin >= 0 && savedExtraMin <= 240) ? savedExtraMin : 0;
+  if (typeof renderExtraHoursOptions === 'function') renderExtraHoursOptions();
   valgtKundeId = t.kunde_id;
   if(t.noter) { const el=document.getElementById('customerName'); if(el) el.value=t.noter; }
   renderGarmentLines();
