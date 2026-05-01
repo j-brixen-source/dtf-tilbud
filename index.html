@@ -6008,6 +6008,8 @@ function selectGarment(i,sku) {
     source: g?.source || '',
     // v1.113: Kopiér product_type fra det nye produkt så smart-detect virker korrekt
     product_type: g?.productType || g?.product_type || '',
+    // v1.119: Kopiér description (salgstekst) til gl så getMeaningfulDescription kan finde den
+    description: g?.description || '',
     // v1.113: Ryd per-linje kategori-override så det nye produkt kan re-detectes
     // (eller bruge sin gemte _kategoriOverrides-mapping hvis der er en)
     productCategoryOverride: undefined,
