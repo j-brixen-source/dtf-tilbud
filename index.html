@@ -4,12 +4,24 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.122b
+  Version: 1.123
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.122b (2026-05-01)  ⭐ Aktuel — Fix: hængelås overskrives ikke længere af slider
+  v1.123  (2026-05-01)  ⭐ Aktuel — Original-pris (overstreget) ved rabat + PDF tryk-mål
+          • Når mængderabat er aktiv (discPct > 0) vises både original-pris
+            (overstreget, lille, grå) og rabat-pris (normal/fed) overalt:
+              - UI prisoversigt: tekstil-linjer, tryk-linjer, stk-priser
+              - PDF tilbud: tøj-tabel + tryk-tabel
+              - PDF ordre: samme som tilbud
+          • Format: "200,00" overstreget mindre + "180,00" fed
+          • PDF mockup-sektion: tilføjet "Tryk (BxH):" foran cm-mål
+            under hvert mockup-billede (kun PDF, ikke UI)
+          • Hjælper helper til konsistent rendering: fmtKrDisc(original,
+            discount) returnerer HTML-snippet med begge priser
+
+  v1.122b (2026-05-01) — Fix: hængelås overskrives ikke længere af slider
           • BUG 1: Hængelås-knap forsvandt efter slider-bevægelse fordi
             updateDesignFieldDisplay() byggede dim-badge innerHTML uden
             at inkludere lockBtn-markup.
@@ -931,7 +943,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.122b — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.123 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3178,7 +3190,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.122b
+    v1.123
   </div>
 </div>
 
@@ -3271,7 +3283,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.122b · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.123 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4893,6 +4905,17 @@ function fmtNum(amount) {
 // "1234.5" → "1.234,50 kr"
 function fmtKr(amount) {
   return fmtNum(amount) + ' kr';
+}
+
+// v1.123: Returnér HTML der viser original-pris (overstreget, lille) + rabat-pris (fed)
+// Hvis discPct=0 (eller original=discounted), returneres bare den normale pris.
+// originalAmount = pris før rabat, discountedAmount = pris efter rabat
+function fmtKrDisc(originalAmount, discountedAmount) {
+  const orig = +originalAmount || 0;
+  const disc = +discountedAmount || 0;
+  // Hvis ingen reel forskel → bare standard
+  if (Math.abs(orig - disc) < 0.005) return fmtKr(disc);
+  return `<span style="text-decoration:line-through;color:var(--muted);font-size:0.85em;margin-right:6px;font-weight:400">${fmtKr(orig)}</span><span style="font-weight:500">${fmtKr(disc)}</span>`;
 }
 
 // Liste af inputs der gemmes globalt (Supabase 'indstillinger'-tabel siden v1.068).
@@ -7874,17 +7897,25 @@ async function pdfRenderMockupsForOneLine(doc, gl, startY, margin) {
     }
 
     // Tekst under mockup: cm-størrelse
+    // v1.123: Format "Tryk (BxH): 25 × 10 cm" (ikke kun cm-tallene)
+    // v1.123: Hvis sizeLock er aktiv, brug låste mål (ikke skala-beregnet)
     const design = gl.designs[m.key];
     const _catKeyPDF = getProductCategory(gl);
     const posSize = gl.positions?.[m.key]?.size || getCategoryFirstSizeName(_catKeyPDF, m.key) || (isSleeve ? 'small' : 'large');
     const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(_catKeyPDF, m.key, posSize) : null;
     let dimText = '—';
     if (design && dimCm && typeof design.scalePercent === 'number') {
-      const sc = design.scalePercent / 100;
-      const sw = (dimCm.w * sc);
-      const sh = (dimCm.h * sc);
+      let sw, sh;
+      if (design.sizeLock && typeof design.sizeLock.w === 'number') {
+        sw = design.sizeLock.w;
+        sh = design.sizeLock.h;
+      } else {
+        const sc = design.scalePercent / 100;
+        sw = (dimCm.w * sc);
+        sh = (dimCm.h * sc);
+      }
       const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.',',');
-      dimText = `${fmt(sw)} × ${fmt(sh)} cm`;
+      dimText = `Tryk (BxH): ${fmt(sw)} × ${fmt(sh)} cm`;
     }
     doc.setFont('helvetica','normal');
     doc.setFontSize(6);
@@ -9201,25 +9232,43 @@ function recalc() {
   if(clothesLines.length){
     clothesLines.forEach(cl=>{
       const skuBadge = cl.sku ? ` <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted)">· ${cl.sku}</span>` : '';
-      html+=`<div class="price-line"><span>${cl.name}${skuBadge} × ${cl.qty} stk (${cl.sizes})</span><span>${fmtKr(cl.total)}</span></div>`;
+      // v1.123: Vis original (overstreget) + rabat-pris hvis discPct > 0
+      const discountedTotal = cl.total * (1 - discPct/100);
+      const totalDisplay = (discPct > 0)
+        ? fmtKrDisc(cl.total, discountedTotal)
+        : fmtKr(cl.total);
+      html+=`<div class="price-line"><span>${cl.name}${skuBadge} × ${cl.qty} stk (${cl.sizes})</span><span>${totalDisplay}</span></div>`;
 
       if (cl.variantPriced && cl.sizeBreakdown && cl.sizeBreakdown.length > 1) {
         // Vis pris pr. størrelse når variant-prisning er aktiv
         const distinctPrices = [...new Set(cl.sizeBreakdown.map(b => b.unitSale.toFixed(2)))];
         if (distinctPrices.length > 1) {
           cl.sizeBreakdown.forEach(b => {
-            const unitDisc = b.unitSale * (1 - discPct/100);
-            html += `<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:16px;color:var(--muted)">${b.size} × ${b.qty} à ${fmtKr(b.unitSale)}</span><span style="color:var(--muted)">${fmtKr((b.unitSale*b.qty))}</span></div>`;
+            // v1.123: Også overstreget original pr. størrelse hvis rabat aktiv
+            const lineGross = b.unitSale * b.qty;
+            const lineDisc = lineGross * (1 - discPct/100);
+            const lineDisplay = (discPct > 0) ? fmtKrDisc(lineGross, lineDisc) : fmtKr(lineGross);
+            html += `<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:16px;color:var(--muted)">${b.size} × ${b.qty} à ${fmtKr(b.unitSale)}</span><span style="color:var(--muted)">${lineDisplay}</span></div>`;
           });
         } else {
           const unitExMoms=cl.salePrice*(1-discPct/100);
           const unitInkMoms=unitExMoms*1.25;
-          html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${fmtKr(unitExMoms)} ekskl. moms · ${fmtKr(unitInkMoms)} inkl. moms</span></div>`;
+          // v1.123: Vis original stykpris overstreget hvis rabat
+          const unitExMomsOrig = cl.salePrice;
+          const unitInkMomsOrig = unitExMomsOrig * 1.25;
+          const stkExDisplay = (discPct > 0) ? fmtKrDisc(unitExMomsOrig, unitExMoms) : fmtKr(unitExMoms);
+          const stkInkDisplay = (discPct > 0) ? fmtKrDisc(unitInkMomsOrig, unitInkMoms) : fmtKr(unitInkMoms);
+          html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${stkExDisplay} ekskl. moms · ${stkInkDisplay} inkl. moms</span></div>`;
         }
       } else {
         const unitExMoms=cl.salePrice*(1-discPct/100);
         const unitInkMoms=unitExMoms*1.25;
-        html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${fmtKr(unitExMoms)} ekskl. moms · ${fmtKr(unitInkMoms)} inkl. moms</span></div>`;
+        // v1.123: Vis original stykpris overstreget hvis rabat
+        const unitExMomsOrig = cl.salePrice;
+        const unitInkMomsOrig = unitExMomsOrig * 1.25;
+        const stkExDisplay = (discPct > 0) ? fmtKrDisc(unitExMomsOrig, unitExMoms) : fmtKr(unitExMoms);
+        const stkInkDisplay = (discPct > 0) ? fmtKrDisc(unitInkMomsOrig, unitInkMoms) : fmtKr(unitInkMoms);
+        html+=`<div class="price-line" style="font-size:11px;padding:1px 0"><span style="padding-left:8px;color:var(--muted)">Stykpris: ${stkExDisplay} ekskl. moms · ${stkInkDisplay} inkl. moms</span></div>`;
       }
     });
   } else {
@@ -9239,7 +9288,10 @@ function recalc() {
       const skuBadge = grp.sku ? ` <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted)">· ${grp.sku}</span>` : '';
       html+=`<div class="price-line" style="font-size:11px;padding:2px 0"><span style="color:var(--muted)">↳ ${grp.name}${skuBadge}</span><span></span></div>`;
       grp.lines.forEach(pl => {
-        html+=`<div class="price-line"><span style="padding-left:10px">${pl.label}</span><span>${fmtKr(pl.total)}</span></div>`;
+        // v1.123: Tryk-pris med original (overstreget) + rabat hvis aktiv
+        const trykDiscTotal = pl.total * (1 - discPct/100);
+        const trykDisplay = (discPct > 0) ? fmtKrDisc(pl.total, trykDiscTotal) : fmtKr(pl.total);
+        html+=`<div class="price-line"><span style="padding-left:10px">${pl.label}</span><span>${trykDisplay}</span></div>`;
       });
     });
     if(discPct>0) html+=`<div class="price-line disc"><span>Mængderabat ${discPct.toFixed(2).replace('.',',')}%${isMaxed?' (maks)':''}</span><span>−${fmtKr(printDisc)}</span></div>`;
@@ -10015,16 +10067,30 @@ async function generateTilbudPDF(mode) {
     // ── Tabel: Tøjlinjer ──
     // v1.104: swatch-kolonne efter Farve (egen kolonne, ingen text-overlap)
     // v1.119: description-tekst (salgstekst) under produktnavn hvis tilgængelig
-    const tøjRows = d.clothesLines.map(cl => [
-      cl.description ? cl.name + '\n' + cl.description : cl.name,
-      cl.sku || '—',
-      cl.sizes || '—',
-      cl.farve || '—',
-      '',                    // tom celle — fyldes via didDrawCell med farve-swatch
-      String(cl.qty),
-      fmtKr(cl.salePrice),
-      fmtKr(cl.total)
-    ]);
+    // v1.123: Hvis rabat aktiv (discPct > 0), vis original-stk-pris og total
+    //         overstreget på første linje + rabat-pris fed på næste linje
+    const _discPct = d.discPct || 0;
+    const tøjRows = d.clothesLines.map(cl => {
+      const stkPriceDisc = cl.salePrice * (1 - _discPct/100);
+      const totalDisc = cl.total * (1 - _discPct/100);
+      // Format: "200,00 kr\n180,00 kr" — vi tegner stikket i didDrawCell
+      const stkPriceCell = (_discPct > 0)
+        ? fmtKr(cl.salePrice) + '\n' + fmtKr(stkPriceDisc)
+        : fmtKr(cl.salePrice);
+      const totalCell = (_discPct > 0)
+        ? fmtKr(cl.total) + '\n' + fmtKr(totalDisc)
+        : fmtKr(cl.total);
+      return [
+        cl.description ? cl.name + '\n' + cl.description : cl.name,
+        cl.sku || '—',
+        cl.sizes || '—',
+        cl.farve || '—',
+        '',                    // tom celle — fyldes via didDrawCell med farve-swatch
+        String(cl.qty),
+        stkPriceCell,
+        totalCell
+      ];
+    });
 
     if(tøjRows.length > 0) {
       // v1.103: Lookup-tabel til farve-hex pr. række (bruges i didDrawCell)
@@ -10072,6 +10138,7 @@ async function generateTilbudPDF(mode) {
         },
         // v1.104: Tegn farve-swatch i swatch-kolonnen (index 4)
         // v1.119: Tegn description som lille grå tekst i Produkt-cellen (index 0)
+        // v1.123: Overstreg original-pris i Stk-pris (6) og Total (7) ved rabat
         didDrawCell: function(data) {
           if (data.section === 'body' && data.column.index === 4) {
             const hex = farveHexByRow[data.row.index];
@@ -10106,6 +10173,32 @@ async function generateTilbudPDF(mode) {
               doc.setFont('helvetica', 'normal');
               doc.setFontSize(9);
               doc.setTextColor(...PDF_COLORS.text);
+            }
+          }
+          // v1.123: Stk-pris (6) + Total (7) — overstreg original (linje 1) når rabat aktiv
+          if (data.section === 'body' && (data.column.index === 6 || data.column.index === 7)) {
+            const raw = data.cell.raw;
+            // Tjek om cellen indeholder 2 linjer (original\nrabat-pris)
+            if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
+              const lines = raw.split('\n');
+              if (lines.length >= 2) {
+                // Tegn vandret streg gennem første linje (original-pris)
+                // Position: ~midten af første linje vertikalt
+                const padTop = data.cell.padding('top');
+                const cellInnerH = data.cell.height - padTop - data.cell.padding('bottom');
+                // Antag 2 linjer fylder cellen ligeligt
+                const lineH = cellInnerH / lines.length;
+                const firstLineMidY = data.cell.y + padTop + lineH / 2;
+                // Beregn x-position af første linje (højrejusteret tekst)
+                const padRight = data.cell.padding('right');
+                const textRightX = data.cell.x + data.cell.width - padRight;
+                // Få tekst-bredde for første linje
+                const firstLineWidth = doc.getTextWidth(lines[0]);
+                const stripeStartX = textRightX - firstLineWidth;
+                doc.setDrawColor(...PDF_COLORS.muted);
+                doc.setLineWidth(0.3);
+                doc.line(stripeStartX, firstLineMidY, textRightX, firstLineMidY);
+              }
             }
           }
         },
@@ -10153,11 +10246,17 @@ async function generateTilbudPDF(mode) {
 
         // Mini tryk-tabel for denne linje (med produkt-info)
         if (linePrintLines.length > 0) {
+          // v1.123: Total-celle indeholder original\nrabat når discPct > 0
+          const _discPctTryk = d.discPct || 0;
           const trykRowsLine = linePrintLines.map((pl, idx) => {
             const productLabel = idx === 0
               ? `${gl.name||'—'}${gl.sku?' · '+gl.sku:''}${gl.selectedColor?' · '+gl.selectedColor:''}`
               : '';
-            return [productLabel, pl.label, fmtKr(pl.total)];
+            const totalDisc = pl.total * (1 - _discPctTryk/100);
+            const totalCell = (_discPctTryk > 0)
+              ? fmtKr(pl.total) + '\n' + fmtKr(totalDisc)
+              : fmtKr(pl.total);
+            return [productLabel, pl.label, totalCell];
           });
           doc.autoTable({
             startY: y,
@@ -10182,6 +10281,28 @@ async function generateTilbudPDF(mode) {
               2: { halign: 'right' },
             },
             margin: { left: margin, right: margin },
+            // v1.123: Overstreg original-pris-linje hvis cellen har 2 linjer
+            didDrawCell: function(data) {
+              if (data.section === 'body' && data.column.index === 2) {
+                const raw = data.cell.raw;
+                if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
+                  const lines = raw.split('\n');
+                  if (lines.length >= 2) {
+                    const padTop = data.cell.padding('top');
+                    const cellInnerH = data.cell.height - padTop - data.cell.padding('bottom');
+                    const lineH = cellInnerH / lines.length;
+                    const firstLineMidY = data.cell.y + padTop + lineH / 2;
+                    const padRight = data.cell.padding('right');
+                    const textRightX = data.cell.x + data.cell.width - padRight;
+                    const firstLineWidth = doc.getTextWidth(lines[0]);
+                    const stripeStartX = textRightX - firstLineWidth;
+                    doc.setDrawColor(...PDF_COLORS.muted);
+                    doc.setLineWidth(0.3);
+                    doc.line(stripeStartX, firstLineMidY, textRightX, firstLineMidY);
+                  }
+                }
+              }
+            },
           });
           y = doc.lastAutoTable.finalY + 2;
         } else if (hasDesign) {
