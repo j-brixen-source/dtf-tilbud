@@ -4,12 +4,23 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.122
+  Version: 1.122b
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.122  (2026-05-01)  ⭐ Aktuel — Størrelse-lås (toggle) på tryk-zone
+  v1.122b (2026-05-01)  ⭐ Aktuel — Fix: hængelås overskrives ikke længere af slider
+          • BUG 1: Hængelås-knap forsvandt efter slider-bevægelse fordi
+            updateDesignFieldDisplay() byggede dim-badge innerHTML uden
+            at inkludere lockBtn-markup.
+          • BUG 2: Cm-værdier ændrede sig fra låste 9×9 til 10×10 (eller
+            tilbage til kategori-standard) ved slider-træk fordi
+            updateDesignFieldDisplay() altid brugte _dimCm * scalePercent
+            uden at tjekke design.sizeLock.
+          • FIX: updateDesignFieldDisplay() respekterer nu sizeLock og
+            inkluderer lockBtn + is-locked class i alle live-updates.
+
+  v1.122  (2026-05-01) — Størrelse-lås (toggle) på tryk-zone
           • Mockups har varierende proportioner i forhold til virkeligheden,
             så samme cm-mål kan se for stort/lille ud på forskellige varianter.
             Den nye størrelse-lås løser det:
@@ -920,7 +931,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.122 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.122b — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3167,7 +3178,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.122
+    v1.122b
   </div>
 </div>
 
@@ -3260,7 +3271,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.122 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.122b · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -7926,10 +7937,17 @@ function updateDesignFieldDisplay(lineIdx, pos) {
   if (slider) slider.value = Math.round(design.scalePercent);
   if (pctEl)  pctEl.textContent = Math.round(design.scalePercent) + '%';
   // 3) Opdater DPI badge + cm-tekst
+  // v1.122b: Hvis sizeLock er aktiv, brug låste mål — slider ændrer kun visuel størrelse
   const dpiInfo = getDesignDpi(design, _dimCm);
   const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
-  const newDimWcm = (_dimCm.w * sc);
-  const newDimHcm = (_dimCm.h * sc);
+  const isLocked = !!design.sizeLock;
+  const newDimWcm = isLocked ? design.sizeLock.w : (_dimCm.w * sc);
+  const newDimHcm = isLocked ? design.sizeLock.h : (_dimCm.h * sc);
+  // v1.122b: Bevar hængelås-knap i innerHTML — bruger samme markup som hovedrender
+  const lockBtn = `<button type="button" class="dim-lock-btn ${isLocked ? 'locked' : ''}"
+    onclick="toggleSizeLock(${lineIdx}, '${pos}', event)"
+    title="${isLocked ? 'Slip låsen' : 'Lås tryk-størrelse — slider ændrer kun visuel størrelse, ikke pris'}"
+    aria-label="${isLocked ? 'Slip størrelse-lås' : 'Lås størrelse'}">${isLocked ? '🔒' : '🔓'}</button>`;
   // Find dim-badge for det specifikke felt (lineIdx + pos)
   const designBox = document.getElementById(`design_box_${lineIdx}_${pos}`);
   if (designBox) {
@@ -7938,6 +7956,8 @@ function updateDesignFieldDisplay(lineIdx, pos) {
     if (designZoneEl) {
       const dimEl = designZoneEl.querySelector('.design-zone-dim.has-controls');
       if (dimEl) {
+        // v1.122b: Toggle is-locked class
+        dimEl.classList.toggle('is-locked', isLocked);
         // v1.097: For sleeves bruges stacked layout (DPI over cm), ellers side-by-side
         const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
         if (isSleeve) {
@@ -7950,6 +7970,7 @@ function updateDesignFieldDisplay(lineIdx, pos) {
               <span class="dim-x">×</span>
               <span class="dim-num">${fmt(newDimHcm)}</span>
               <span class="dim-unit">cm</span>
+              ${lockBtn}
             </div>`;
         } else {
           const dpiBadgeForDim = dpiInfo
@@ -7959,7 +7980,8 @@ function updateDesignFieldDisplay(lineIdx, pos) {
             <span class="dim-num">${fmt(newDimWcm)}</span>
             <span class="dim-x">×</span>
             <span class="dim-num">${fmt(newDimHcm)}</span>
-            <span class="dim-unit">cm</span>`;
+            <span class="dim-unit">cm</span>
+            ${lockBtn}`;
         }
       }
     }
