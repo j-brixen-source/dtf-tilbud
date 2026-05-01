@@ -4,12 +4,28 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.120g
+  Version: 1.121
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.120g (2026-05-01)  ⭐ Aktuel — Fix: action-knapper (centrer/fjern) tilbage på plads
+  v1.121  (2026-05-01)  ⭐ Aktuel — Mockup-billeder i PDF-rendering
+          • renderDesignMockup() bruger nu mockup-PNG som baggrund når
+            kategorien har default mockup (ELLER linjen har override).
+            Ellers fallback til farveboks som tidligere.
+          • Multiply-blend simuleres på canvas:
+              1. Tegn farve som rektangel
+              2. Sæt globalCompositeOperation='multiply', tegn mockup
+              3. Sæt globalCompositeOperation='destination-in', tegn
+                 mockup som mask så transparente pixels forbliver
+                 transparente i output
+          • Pre-load af mockup-PNG via Image() med caching i
+            window._mockupImageCache så samme PNG kun loades én gang.
+          • Lyse-grå baggrund (samme som UI app-bg #f7f6f3) udenfor
+            tøj-silhuet så mockuppen ikke ligner et farvet rektangel.
+          • Sleeves uden mockup beholder gammel render-stil (farveboks).
+
+  v1.120g (2026-05-01) — Fix: action-knapper (centrer/fjern) tilbage på plads
           • BUG: I v1.120f overskrev en :not()-CSS-regel position:absolute
             med position:relative på .design-zone-actions, så centrer- og
             fjern-knapperne ikke længere blev positioneret right:-38px
@@ -890,7 +906,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.120g — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.121 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3105,7 +3121,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.120g
+    v1.121
   </div>
 </div>
 
@@ -3198,7 +3214,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.120g · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.121 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -7427,6 +7443,88 @@ function loadImageForCanvas(url) {
   });
 }
 
+// v1.121: Cache for mockup-billeder så samme PNG kun loades én gang
+window._mockupImageCache = window._mockupImageCache || {};
+
+// Load et mockup-billede (med cache). Returnerer Image-objekt eller null hvis fejl.
+async function loadMockupImage(mockupKey, posKey) {
+  if (!mockupKey || !posKey) return null;
+  const url = (typeof getMockupUrl === 'function') ? getMockupUrl(mockupKey, posKey) : null;
+  if (!url) return null;
+  // Cache-key
+  const cacheKey = url;
+  if (window._mockupImageCache[cacheKey]) return window._mockupImageCache[cacheKey];
+  try {
+    const img = await loadImageForCanvas(url);
+    window._mockupImageCache[cacheKey] = img;
+    return img;
+  } catch (err) {
+    if (typeof dbLog === 'function') dbLog('loadMockupImage fejlede', { url, err: String(err) });
+    return null;
+  }
+}
+
+// v1.121: Tegn mockup som baggrund på canvas (med multiply-farve overlay)
+// Resultat: tøj-silhuet farves med tekstilFarve, baggrund forbliver transparent
+// (eller den lyse-grå app-baggrund hvis bakgrundFarve er angivet).
+// Canvas-context skal være pre-skaleret af kalderen.
+//
+// Returnerer true hvis mockup blev tegnet, false hvis den ikke kunne loades
+async function drawMockupBackground(ctx, mockupImg, tekstilFarve, W, H, bgFarve) {
+  if (!mockupImg) return false;
+
+  // 1. Tegn lys grå baggrund (matcher app)
+  if (bgFarve) {
+    ctx.fillStyle = bgFarve;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // 2. Pre-render mockup-farveoverlay på en temp-canvas
+  // (multiply-blend på selve canvas kan blive forvirret med eksisterende baggrund)
+  const temp = document.createElement('canvas');
+  temp.width = W;
+  temp.height = H;
+  const tctx = temp.getContext('2d');
+
+  // Beregn drawW/drawH så aspect-ratio bevares og fitter ind i W×H
+  const imgAspect = mockupImg.naturalWidth / mockupImg.naturalHeight;
+  const boxAspect = W / H;
+  let drawW, drawH, drawX, drawY;
+  if (imgAspect > boxAspect) {
+    // Bredere end boksen → fit til bredde
+    drawW = W;
+    drawH = W / imgAspect;
+    drawX = 0;
+    drawY = (H - drawH) / 2;
+  } else {
+    // Højere end boksen → fit til højde
+    drawH = H;
+    drawW = H * imgAspect;
+    drawX = (W - drawW) / 2;
+    drawY = 0;
+  }
+
+  // 2a. Tegn farve-rektangel
+  tctx.fillStyle = tekstilFarve;
+  tctx.fillRect(drawX, drawY, drawW, drawH);
+
+  // 2b. Multiply mockup ovenpå (sømme bevares, tøjet farves)
+  tctx.globalCompositeOperation = 'multiply';
+  tctx.drawImage(mockupImg, drawX, drawY, drawW, drawH);
+
+  // 2c. Anvend mockup som mask så transparente pixels i mockup forbliver transparente
+  tctx.globalCompositeOperation = 'destination-in';
+  tctx.drawImage(mockupImg, drawX, drawY, drawW, drawH);
+
+  // 2d. Reset
+  tctx.globalCompositeOperation = 'source-over';
+
+  // 3. Tegn temp-canvas på hoved-canvas (over baggrunden)
+  ctx.drawImage(temp, 0, 0);
+
+  return true;
+}
+
 // Render et design-mockup til canvas → returnerer dataURL (PNG).
 // v1.117b: Canvas-aspect følger nu kategoriens felt_w/felt_h (samme som UI).
 // outputW/outputH-parametre bevares for bagudkompatibilitet, men hvis kun den
@@ -7473,21 +7571,33 @@ async function renderDesignMockup(gl, pos, outputW, outputH) {
   const tekstilFarve = gl.selectedColor
     ? (colorHexMap[gl.selectedColor] || (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || '#888')
     : '#888';
-  ctx.fillStyle = tekstilFarve;
-  // Afrunder hjørner lidt for "cool simpelt" look
-  const r = 6;
-  ctx.beginPath();
-  ctx.moveTo(r, 0);
-  ctx.lineTo(W - r, 0);
-  ctx.quadraticCurveTo(W, 0, W, r);
-  ctx.lineTo(W, H - r);
-  ctx.quadraticCurveTo(W, H, W - r, H);
-  ctx.lineTo(r, H);
-  ctx.quadraticCurveTo(0, H, 0, H - r);
-  ctx.lineTo(0, r);
-  ctx.quadraticCurveTo(0, 0, r, 0);
-  ctx.closePath();
-  ctx.fill();
+
+  // v1.121: Hvis kategorien (eller produkt-override) har en mockup, brug den som baggrund
+  // Ellers fallback til klassisk farveboks som før
+  const mockupKey = (typeof getEffectiveMockup === 'function')
+    ? getEffectiveMockup(gl, pos) : null;
+  const mockupImg = mockupKey ? await loadMockupImage(mockupKey, pos) : null;
+
+  if (mockupImg) {
+    // Tegn lys grå app-baggrund + farvet mockup-silhuet ovenpå
+    await drawMockupBackground(ctx, mockupImg, tekstilFarve, W, H, '#f7f6f3');
+  } else {
+    // Fallback: klassisk farveboks (samme som før v1.121)
+    ctx.fillStyle = tekstilFarve;
+    const r = 6;
+    ctx.beginPath();
+    ctx.moveTo(r, 0);
+    ctx.lineTo(W - r, 0);
+    ctx.quadraticCurveTo(W, 0, W, r);
+    ctx.lineTo(W, H - r);
+    ctx.quadraticCurveTo(W, H, W - r, H);
+    ctx.lineTo(r, H);
+    ctx.quadraticCurveTo(0, H, 0, H - r);
+    ctx.lineTo(0, r);
+    ctx.quadraticCurveTo(0, 0, r, 0);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   // v1.100: Brug SAMME default-beregning som UI — fixer position-fallback (var 0,0)
   // og zone-størrelse-fallback (var 80%) som ikke matchede UI
