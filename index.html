@@ -4,12 +4,36 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.115
+  Version: 1.116
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.115  (2026-04-30)  ⭐ Aktuel — Realtime sync af kategorier + overrides
+  v1.116  (2026-05-01)  ⭐ Aktuel — Felt-størrelser per position
+          • Hver position på en kategori har nu felt_w og felt_h (cm) der
+            beskriver det fysiske trykbare areal — så design-zone-boksen
+            kan tegnes i KORREKT proportion til produktet.
+          • Tidligere: alle felter var 50×70 cm (t-shirt-baseret) hvilket
+            gjorde at fx en cap med 11×5 cm tryk så ud som en lillebitte
+            klat i et kæmpe felt.
+          • Nu: cap-felt er 22×12 cm → samme tryk fylder nu visuelt 50%
+            af feltet → realistisk!
+          • Defaults pr. kategori (kørt via SQL):
+              tshirt/hoodie/jacket/other: 50×70 (front/back), 12×8 (ærmer)
+              cap: 22×12, totebag: 38×42, apron: 60×80, napkin: 40×40,
+              pants: 40×60, accessory: 30×30
+          • Modal udvidet: ved hver position er der nu felt-mål-felter
+            B og H i cm (ud over de eksisterende sizes-felter)
+          • saveKategori() inkluderer nu felt_w/felt_h ved upsert
+          • renderGarmentLines() beregner aspect-ratio og sætter dynamisk
+            width/height på .design-zone-box (max 280px bredde,
+            max 392px højde — beholder layout-grænser)
+          • getTrykZonePercent(pos, dimCm, catKey) bruger nu kategoriens
+            felt-mål i stedet for hardcoded TSHIRT_CANVAS_CM
+          • Bagudkompatibel fallback: hvis felt_w/h mangler i DB,
+            bruges de gamle defaults (50×70 / 22.5×30)
+
+  v1.115  (2026-04-30) — Realtime sync af kategorier + overrides
           • Realtime subscription på produkt_kategorier-tabellen:
               - Når en kollega tilføjer/redigerer/sletter en kategori,
                 opdateres alle åbne app-vinduer øjeblikkeligt
@@ -699,7 +723,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.115 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.116 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1104,6 +1128,34 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 8px;
+  }
+  /* v1.116: Felt-mål-input pr. position (cm-størrelse på produktet) */
+  .kat-felt-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px 8px;
+    border-bottom: 1px dashed var(--border);
+    margin-bottom: 6px;
+  }
+  .kat-felt-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    cursor: help;
+    margin-right: 4px;
+  }
+  .kat-felt-row input {
+    width: 60px;
+    padding: 4px 6px;
+    font-size: 12px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    font-family: inherit;
+  }
+  .kat-felt-x {
+    color: var(--muted);
+    font-size: 12px;
   }
   .kat-size-row {
     display: grid;
@@ -1548,6 +1600,10 @@
     background-repeat: no-repeat;
     overflow: hidden;
   }
+  /* v1.116: Felt-størrelse sættes nu dynamisk via inline style baseret på
+     kategoriens felt_w/felt_h (cm). Disse CSS-regler holder stadig som fallback
+     hvis kategori-data mangler — men inline style overskriver dem altid når
+     kategorien har felt-mål. */
   .design-zone-box.front  { width: 280px; height: 392px; }
   .design-zone-box.back   { width: 280px; height: 392px; }
   .design-zone-box.sleeve { width: 140px; height: 187px; }
@@ -2712,7 +2768,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.115
+    v1.116
   </div>
 </div>
 
@@ -2805,7 +2861,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.115 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.116 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3760,6 +3816,13 @@ function renderKatPositionSection(pos, posData) {
   if (!container) return;
 
   const enabled = !!posData.enabled;
+  // v1.116: Felt-mål — fallback til defaults hvis ikke sat
+  const isSleeve = (pos.key === 'sleeve_l' || pos.key === 'sleeve_r');
+  const defaultFeltW = isSleeve ? 12 : 50;
+  const defaultFeltH = isSleeve ? 8 : 70;
+  const feltW = (posData.felt_w != null && isFinite(parseFloat(posData.felt_w))) ? parseFloat(posData.felt_w) : defaultFeltW;
+  const feltH = (posData.felt_h != null && isFinite(parseFloat(posData.felt_h))) ? parseFloat(posData.felt_h) : defaultFeltH;
+
   const section = document.createElement('div');
   section.className = 'kat-pos-section';
   section.dataset.posKey = pos.key;
@@ -3771,6 +3834,12 @@ function renderKatPositionSection(pos, posData) {
     +   '</label>'
     + '</div>'
     + '<div class="kat-sizes-wrapper" style="display:' + (enabled ? 'block' : 'none') + '">'
+    +   '<div class="kat-felt-row">'
+    +     '<span class="kat-felt-label" title="Den fysiske størrelse (cm) som feltet repræsenterer på produktet. Bruges til at tegne design-zone-boksen i korrekt proportion. T-shirt = 50×70, cap = 22×12, etc.">Felt-mål (cm):</span>'
+    +     '<input type="number" class="kat-felt-w" min="1" step="0.5" value="' + feltW + '" placeholder="B">'
+    +     '<span class="kat-felt-x">×</span>'
+    +     '<input type="number" class="kat-felt-h" min="1" step="0.5" value="' + feltH + '" placeholder="H">'
+    +   '</div>'
     +   '<div class="kat-size-headers">'
     +     '<span>Navn</span>'
     +     '<span>B (cm)</span>'
@@ -3882,6 +3951,24 @@ async function saveKategori(existingId, existingKey) {
     const enabled = !!(checkbox && checkbox.checked);
     if (enabled) anyEnabled = true;
     const sizes = [];
+
+    // v1.116: Læs felt-mål (cm) pr. position — defaults hvis felter mangler
+    const isSleeveCheck = (p.key === 'sleeve_l' || p.key === 'sleeve_r');
+    let feltW = isSleeveCheck ? 12 : 50;
+    let feltH = isSleeveCheck ? 8 : 70;
+    if (section) {
+      const feltWInput = section.querySelector('.kat-felt-w');
+      const feltHInput = section.querySelector('.kat-felt-h');
+      if (feltWInput) {
+        const v = parseFloat(feltWInput.value);
+        if (isFinite(v) && v > 0) feltW = v;
+      }
+      if (feltHInput) {
+        const v = parseFloat(feltHInput.value);
+        if (isFinite(v) && v > 0) feltH = v;
+      }
+    }
+
     if (enabled && section) {
       const sizeRows = section.querySelectorAll('.kat-size-row');
       for (let i = 0; i < sizeRows.length; i++) {
@@ -3899,7 +3986,8 @@ async function saveKategori(existingId, existingKey) {
       }
       if (sizes.length === 0) return showError(p.label + ' er aktiv men har ingen størrelser');
     }
-    positions[p.key] = { enabled, sizes };
+    // v1.116: Inkluder felt-mål i positions-objekt
+    positions[p.key] = { enabled, sizes, felt_w: feltW, felt_h: feltH };
   }
 
   if (!anyEnabled) return showError('Mindst én position skal være aktiv');
@@ -6568,13 +6656,34 @@ const TSHIRT_CANVAS_CM = { w: 50, h: 70 };
 // Aspect (22.5/30 = 0.75) matcher sleeve-felt-boksens aspect (112/150 = 0.747)
 const SLEEVE_CANVAS_CM = { w: 22.5, h: 30 };
 
+// v1.116: Hent felt-størrelse i cm for en kategori+position.
+// Returnerer { w, h } i cm. Falder tilbage til TSHIRT_CANVAS_CM/SLEEVE_CANVAS_CM
+// hvis kategorien eller position ikke har felt_w/felt_h sat.
+function getCategoryFelt(catKey, posKey) {
+  const isSleeve = (posKey === 'sleeve_l' || posKey === 'sleeve_r');
+  const fallback = isSleeve ? SLEEVE_CANVAS_CM : TSHIRT_CANVAS_CM;
+
+  if (!catKey || !posKey) return fallback;
+  const kat = (typeof getCategoryByKey === 'function') ? getCategoryByKey(catKey) : null;
+  if (!kat || !kat.positions) return fallback;
+  const pos = kat.positions[posKey];
+  if (!pos) return fallback;
+
+  const w = parseFloat(pos.felt_w);
+  const h = parseFloat(pos.felt_h);
+  if (!isFinite(w) || w <= 0 || !isFinite(h) || h <= 0) return fallback;
+  return { w, h };
+}
+
 // Beregn tryk-zone størrelse i procent af felt-boksen
 // (dvs. cm-mål / canvas-størrelse)
-function getTrykZonePercent(pos, dimCm) {
+// v1.116: Tager nu også catKey for at bruge kategoriens felt-mål i stedet for hardcoded
+function getTrykZonePercent(pos, dimCm, catKey) {
   if (!dimCm || !dimCm.w || !dimCm.h) return null;
-  const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
-  // v1.086: Sleeves bruger nu sleeve-canvas, så 10×10 cm bliver kvadratisk
-  const canvas = isSleeve ? SLEEVE_CANVAS_CM : TSHIRT_CANVAS_CM;
+  // v1.116: Brug kategoriens felt-mål hvis tilgængelig
+  const canvas = catKey ? getCategoryFelt(catKey, pos) : (
+    (pos === 'sleeve_l' || pos === 'sleeve_r') ? SLEEVE_CANVAS_CM : TSHIRT_CANVAS_CM
+  );
   const wPct = Math.min(100, (dimCm.w / canvas.w) * 100);
   const hPct = Math.min(100, (dimCm.h / canvas.h) * 100);
   return { wPct, hPct };
@@ -6815,7 +6924,7 @@ async function renderDesignMockup(gl, pos, outputW, outputH) {
   const _catKey = getProductCategory(gl);
   const posSize = gl.positions?.[pos]?.size || getCategoryFirstSizeName(_catKey, pos) || (isSleeve ? 'small' : 'large');
   const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(_catKey, pos, posSize) : null;
-  const zonePct = (typeof getTrykZonePercent === 'function' && dimCm) ? getTrykZonePercent(pos, dimCm) : null;
+  const zonePct = (typeof getTrykZonePercent === 'function' && dimCm) ? getTrykZonePercent(pos, dimCm, _catKey) : null;
   const defPos = (zonePct && typeof getDefaultDesignPosition === 'function')
     ? getDefaultDesignPosition(pos, zonePct, dimCm)
     : { x: 50, y: 50 };
@@ -7752,15 +7861,39 @@ function buildLineTrykSection(i, gl) {
     let boxClick, boxDragOver, boxDragLeave, boxDrop, boxStyle, boxInner, deactivateBtn;
     // v1.077: Beregn tryk-zone proportional + default-position
     // v1.112: brug categoryKey
+    // v1.116: send categoryKey til getTrykZonePercent så felt-mål bruges
     const dimCm = getTrykDimensions(categoryKey, m.key, size);
-    const zonePct = getTrykZonePercent(m.key, dimCm);
+    const zonePct = getTrykZonePercent(m.key, dimCm, categoryKey);
+    // v1.116: Hent felt-mål for denne kategori+position så design-zone-boksen
+    // tegnes med korrekt aspect-ratio (cap = bred-lav, t-shirt = høj-smal etc.)
+    const feltCm = getCategoryFelt(categoryKey, m.key);
+    const isSleeveBox = (m.type === 'sleeve');
+    // Max-dimensioner pr. type (= eksisterende CSS-defaults)
+    const maxBoxW = isSleeveBox ? 140 : 280;
+    const maxBoxH = isSleeveBox ? 187 : 392;
+    // Beregn faktisk box-størrelse: behold aspect-ratio fra felt-mål, fit inden for max-grænser
+    let boxPxW = maxBoxW;
+    let boxPxH = (feltCm.h / feltCm.w) * boxPxW;
+    if (boxPxH > maxBoxH) {
+      boxPxH = maxBoxH;
+      boxPxW = (feltCm.w / feltCm.h) * boxPxH;
+    }
+    // Rund til nærmeste pixel for skarphed
+    boxPxW = Math.round(boxPxW);
+    boxPxH = Math.round(boxPxH);
+    // Min bredde 60px så meget små felter (fx ærme) ikke bliver klikbare
+    if (boxPxW < 60) {
+      boxPxH = (feltCm.h / feltCm.w) * 60;
+      boxPxW = 60;
+    }
+    const dynamicSizeStyle = `width:${boxPxW}px;height:${boxPxH}px;`;
     // v1.107: Ny tilstand 0 — position ikke tilladt for denne produktkategori
     const isAllowed = allowedPositions.includes(m.key);
     if (!isAllowed) {
       // Tilstand 0: ikke tilladt → vis grå/inaktiv med forklaring, ingen interaktion
       boxClick = '';  // ingen handler
       boxDragOver = boxDragLeave = boxDrop = '';
-      boxStyle = `background-color:${tekstilFarve};opacity:0.35;pointer-events:none`;
+      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve};opacity:0.35;pointer-events:none`;
       const reason = (m.type === 'sleeve')
         ? `Ærmer ikke tilgængelig på<br>${category.label}`
         : `${m.title} ikke tilgængelig på<br>${category.label}`;
@@ -7774,7 +7907,7 @@ function buildLineTrykSection(i, gl) {
       boxDragOver  = `ondragover="handleDesignDragOverAuto(event, ${i}, '${m.key}')"`;
       boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
       boxDrop      = `ondrop="handleDesignDropAuto(event, ${i}, '${m.key}')"`;
-      boxStyle = `background-color:${tekstilFarve}`;
+      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
       boxInner = `
         <div class="design-zone-plus">+</div>
         <div class="design-zone-check">✓</div>`;
@@ -7786,7 +7919,7 @@ function buildLineTrykSection(i, gl) {
       boxDragOver  = `ondragover="handleDesignDragOver(event, ${i}, '${m.key}')"`;
       boxDragLeave = `ondragleave="handleDesignDragLeave(event)"`;
       boxDrop      = `ondrop="handleDesignDrop(event, ${i}, '${m.key}')"`;
-      boxStyle = `background-color:${tekstilFarve}`;
+      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
       // Indikator-zone med upload-tekst INDE i den (ingen separat boks)
       let zoneIndicatorHtml = '';
       if (zonePct && currentDim) {
@@ -7809,7 +7942,7 @@ function buildLineTrykSection(i, gl) {
       // v1.079: skalering via slider/handles + warning-detektion
       boxClick = '';
       boxDragOver = boxDragLeave = boxDrop = '';
-      boxStyle = `background-color:${tekstilFarve}`;
+      boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
       // Position: brug gemt position eller default
       const savedPos = design.position;
       const defPos = (zonePct ? getDefaultDesignPosition(m.key, zonePct, _dimCm) : { x: 50, y: 50 });
