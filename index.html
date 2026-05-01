@@ -4,12 +4,23 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.116
+  Version: 1.116b
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.116  (2026-05-01)  ⭐ Aktuel — Felt-størrelser per position
+  v1.116b (2026-05-01)  ⭐ Aktuel — Default design-position altid centreret
+          • Fjerner v1.087-specialcase: små designs (≤12×12 cm) blev
+            tidligere auto-placeret i øverste-højre hjørne (venstre
+            brystplacering). Det skabte forvirring fordi designet
+            "hoppede" til hjørnet og skulle trækkes tilbage i centeren
+            hver gang.
+          • Nu: ALLE positioner får designet centreret som default
+            (samme regel for front, back, sleeves) — uanset størrelse.
+          • Brugeren kan stadig trække til hjørnet manuelt hvis brystplacering
+            ønskes.
+
+  v1.116  (2026-05-01) — Felt-størrelser per position
           • Hver position på en kategori har nu felt_w og felt_h (cm) der
             beskriver det fysiske trykbare areal — så design-zone-boksen
             kan tegnes i KORREKT proportion til produktet.
@@ -723,7 +734,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.116 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.116b — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2768,7 +2779,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.116
+    v1.116b
   </div>
 </div>
 
@@ -2861,7 +2872,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.116 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.116b · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -6693,23 +6704,11 @@ function getTrykZonePercent(pos, dimCm, catKey) {
 // pos er 'front'|'back'|'sleeve_l'|'sleeve_r', zonePct er output fra getTrykZonePercent
 function getDefaultDesignPosition(pos, zonePct, dimCm) {
   if (!zonePct) return { x: 50, y: 50 };
-  if (pos === 'sleeve_l' || pos === 'sleeve_r') {
-    // Centreret på sleeve
-    return { x: 50 - zonePct.wPct / 2, y: 50 - zonePct.hPct / 2 };
-  }
-  if (pos === 'front') {
-    // v1.087: Kun "Lille" (≤12×12 cm) placeres øverst-højre (venstre bryst).
-    // Stort/XL/andre placeres center-ned ligesom bagside (brystcentreret tryk).
-    const isSmall = dimCm && dimCm.w && dimCm.h && (dimCm.w <= 12 && dimCm.h <= 12);
-    if (isSmall) {
-      // Øverst-højre (venstre bryst når trøje er på)
-      return { x: Math.max(0, 100 - zonePct.wPct - 8), y: 12 };
-    }
-    // Stort/XL: centreret-ned ligesom bagside
-    return { x: 50 - zonePct.wPct / 2, y: 18 };
-  }
-  // Bagside: centreret-ned (brøst-omkring centreret)
-  return { x: 50 - zonePct.wPct / 2, y: 18 };
+  // v1.116b: Alle positioner får designet centreret som default.
+  // Tidligere (v1.087) blev små designs (≤12×12) auto-placeret i øverste-højre
+  // (brystplacering) — det fjernes her, da brugere foretrækker at start fra
+  // center og selv trække til hjørnet hvis brystplacering ønskes.
+  return { x: 50 - zonePct.wPct / 2, y: 50 - zonePct.hPct / 2 };
 }
 
 // ──────────────────────────────────────────────────────────────────────
