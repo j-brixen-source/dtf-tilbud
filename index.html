@@ -4,12 +4,32 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.119b
+  Version: 1.120
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.119b (2026-05-01)  ⭐ Aktuel — Kompakt layout for produktionstid + ekstra-tid
+  v1.120  (2026-05-01)  ⭐ Aktuel — Mockup-billeder i design-zoner (UI)
+          • 61 mockup-PNG'er commited til /mockups/-mappen i repoet:
+              tshirt_a/b/c/d, hoodie_a, zip_hoodie_a/b, polo_a/b,
+              cap, sweatpants, jeans, cargo_pants_a/b, vest, varsity_a,
+              balaclava, crewneck_a-f, mockneck, turtleneck, m.fl.
+          • SQL: tilføjet 'mockup'-felt til hver position i
+            produkt_kategorier (positions->'front'->>'mockup' = 'tshirt_a')
+          • Defaults sat for 6 kategorier hvor matching mockup findes
+          • Mockup loades dynamisk: /mockups/{key}_{front|back}.png
+          • UI: Kategori-modal udvidet med "Mockup-billede"-dropdown pr.
+            position — vælg fra liste over tilgængelige mockups
+          • Tilbud-side: design-zone-box viser nu mockup-billede som
+            baggrund med mix-blend-mode: multiply så tøjet farves med
+            kundens valgte farve. Designet vises ovenpå.
+          • Per-linje variant-vælger: hver garmentLine har en
+            'mockupOverride'-knap der lader brugeren skifte fra
+            kategoriens default (fx tshirt_a) til en variant (tshirt_b)
+            uden at ændre kategorien selv.
+          • PDF-rendering kommer i v1.121
+
+  v1.119b (2026-05-01) — Kompakt layout for produktionstid + ekstra-tid
           • Produktionstid-kort er nu 3-kolonner i 2-kolonne layoutet
             (i stedet for at stable lodret) → fylder kun 1 række højt
           • Padding/gap reduceret så hele blokken matcher højden af
@@ -797,7 +817,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.119b — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.120 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1673,6 +1693,23 @@
     background-position: center;
     background-repeat: no-repeat;
     overflow: hidden;
+  }
+  /* v1.120: Mockup-overlay (PNG med transparent baggrund + multiply-blend
+     så tøjet farves med kundens valgte tøjfarve fra parent's background-color) */
+  .design-zone-box .design-zone-mockup {
+    position: absolute;
+    inset: 0;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Sørg for at design + zone-indicator + tryk-zone vises ovenpå mockup */
+  .design-zone-box > *:not(.design-zone-mockup) {
+    position: relative;
+    z-index: 2;
   }
   /* v1.116: Felt-størrelse sættes nu dynamisk via inline style baseret på
      kategoriens felt_w/felt_h (cm). Disse CSS-regler holder stadig som fallback
@@ -2970,7 +3007,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.119b
+    v1.120
   </div>
 </div>
 
@@ -3063,7 +3100,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.119b · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.120 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -4053,6 +4090,26 @@ function renderKatPositionSection(pos, posData) {
   const defaultFeltH = isSleeve ? 8 : 70;
   const feltW = (posData.felt_w != null && isFinite(parseFloat(posData.felt_w))) ? parseFloat(posData.felt_w) : defaultFeltW;
   const feltH = (posData.felt_h != null && isFinite(parseFloat(posData.felt_h))) ? parseFloat(posData.felt_h) : defaultFeltH;
+  // v1.120: Mockup-key (kun for front/back — sleeves har ingen mockup)
+  const currentMockup = String(posData.mockup || '');
+
+  // Build mockup-options
+  let mockupOptions = '<option value="">– Ingen mockup –</option>';
+  if (typeof AVAILABLE_MOCKUPS !== 'undefined') {
+    AVAILABLE_MOCKUPS.forEach(m => {
+      const sel = (m.key === currentMockup) ? ' selected' : '';
+      mockupOptions += '<option value="' + escapeHtml(m.key) + '"' + sel + '>' + escapeHtml(m.label) + '</option>';
+    });
+  }
+  // Skjul mockup-row på sleeves
+  const mockupRowHtml = isSleeve ? '' : (''
+    + '<div class="kat-felt-row" style="border-bottom:1px dashed var(--border);padding-bottom:8px;margin-bottom:6px">'
+    +   '<span class="kat-felt-label" title="Mockup-billede der vises som baggrund i design-zonen. Tøjet farves med kundens valgte farve via multiply-blend.">Mockup-billede:</span>'
+    +   '<select class="kat-mockup-select" style="flex:1;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:4px;font-family:inherit">'
+    +     mockupOptions
+    +   '</select>'
+    + '</div>'
+  );
 
   const section = document.createElement('div');
   section.className = 'kat-pos-section';
@@ -4071,6 +4128,7 @@ function renderKatPositionSection(pos, posData) {
     +     '<span class="kat-felt-x">×</span>'
     +     '<input type="number" class="kat-felt-h" min="1" step="0.5" value="' + feltH + '" placeholder="H">'
     +   '</div>'
+    +   mockupRowHtml
     +   '<div class="kat-size-headers">'
     +     '<span>Navn</span>'
     +     '<span>B (cm)</span>'
@@ -4187,6 +4245,8 @@ async function saveKategori(existingId, existingKey) {
     const isSleeveCheck = (p.key === 'sleeve_l' || p.key === 'sleeve_r');
     let feltW = isSleeveCheck ? 12 : 50;
     let feltH = isSleeveCheck ? 8 : 70;
+    // v1.120: Læs mockup-key (kun front/back har mockup-vælger)
+    let mockupVal = '';
     if (section) {
       const feltWInput = section.querySelector('.kat-felt-w');
       const feltHInput = section.querySelector('.kat-felt-h');
@@ -4198,6 +4258,8 @@ async function saveKategori(existingId, existingKey) {
         const v = parseFloat(feltHInput.value);
         if (isFinite(v) && v > 0) feltH = v;
       }
+      const mockupSel = section.querySelector('.kat-mockup-select');
+      if (mockupSel) mockupVal = mockupSel.value || '';
     }
 
     if (enabled && section) {
@@ -4218,7 +4280,8 @@ async function saveKategori(existingId, existingKey) {
       if (sizes.length === 0) return showError(p.label + ' er aktiv men har ingen størrelser');
     }
     // v1.116: Inkluder felt-mål i positions-objekt
-    positions[p.key] = { enabled, sizes, felt_w: feltW, felt_h: feltH };
+    // v1.120: Inkluder mockup-key (tom string = ingen mockup)
+    positions[p.key] = { enabled, sizes, felt_w: feltW, felt_h: feltH, mockup: mockupVal };
   }
 
   if (!anyEnabled) return showError('Mindst én position skal være aktiv');
@@ -6916,6 +6979,102 @@ function getCategoryFelt(catKey, posKey) {
   return { w, h };
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// v1.120: Mockup-billeder (PNG-filer i /mockups/-mappen)
+// Mockup-key (fx 'tshirt_a') → loader '/mockups/tshirt_a_front.png' eller '/mockups/tshirt_a_back.png'
+// ──────────────────────────────────────────────────────────────────────
+
+// Komplet liste over alle mockups (61 stk pr. v1.120). Bruges til dropdown-valg.
+// Hver entry: { key, label, hasFront, hasBack }
+const AVAILABLE_MOCKUPS = [
+  { key: 'tshirt_a',           label: 'T-shirt A (klassisk slim)',     hasFront: true, hasBack: true },
+  { key: 'tshirt_b',           label: 'T-shirt B (oversize)',          hasFront: true, hasBack: true },
+  { key: 'tshirt_c',           label: 'T-shirt C (oversize variant)',  hasFront: true, hasBack: true },
+  { key: 'tshirt_d',           label: 'T-shirt D (raglan)',            hasFront: true, hasBack: true },
+  { key: 'crewneck_a',         label: 'Crewneck A (long-sleeve)',      hasFront: true, hasBack: true },
+  { key: 'crewneck_b',         label: 'Crewneck B (cropped)',          hasFront: true, hasBack: true },
+  { key: 'crewneck_c',         label: 'Crewneck C',                    hasFront: true, hasBack: true },
+  { key: 'crewneck_d',         label: 'Crewneck D (heavy)',            hasFront: true, hasBack: true },
+  { key: 'crewneck_e',         label: 'Crewneck E',                    hasFront: true, hasBack: true },
+  { key: 'crewneck_f',         label: 'Crewneck F (cropped)',          hasFront: true, hasBack: true },
+  { key: 'crewneck_oversize',  label: 'Crewneck oversize',             hasFront: true, hasBack: true },
+  { key: 'mockneck',           label: 'Mock-neck',                     hasFront: true, hasBack: true },
+  { key: 'turtleneck',         label: 'Turtleneck',                    hasFront: true, hasBack: true },
+  { key: 'hoodie_a',           label: 'Hoodie (oversize)',             hasFront: true, hasBack: true },
+  { key: 'zip_hoodie_a',       label: 'Zip-hoodie A',                  hasFront: true, hasBack: true },
+  { key: 'zip_hoodie_b',       label: 'Zip-hoodie B',                  hasFront: true, hasBack: true },
+  { key: 'polo_a',             label: 'Polo A (klassisk)',             hasFront: true, hasBack: true },
+  { key: 'polo_b',             label: 'Polo B (kontrast-ærmer)',       hasFront: true, hasBack: true },
+  { key: 'puffer_jacket',      label: 'Puffer-jakke',                  hasFront: true, hasBack: true },
+  { key: 'varsity_a',          label: 'Varsity-jakke A',               hasFront: true, hasBack: true },
+  { key: 'shorts_a',           label: 'Shorts',                        hasFront: true, hasBack: true },
+  { key: 'cargo_shorts',       label: 'Cargo shorts',                  hasFront: true, hasBack: true },
+  { key: 'sweatpants',         label: 'Sweatpants',                    hasFront: true, hasBack: true },
+  { key: 'jeans',              label: 'Jeans',                         hasFront: true, hasBack: true },
+  { key: 'cargo_pants_a',      label: 'Cargo pants A',                 hasFront: true, hasBack: true },
+  { key: 'cargo_pants_b',      label: 'Cargo pants B',                 hasFront: true, hasBack: true },
+  { key: 'cap',                label: 'Cap / Beanie',                  hasFront: true, hasBack: true },
+  { key: 'vest',               label: 'Vest',                          hasFront: true, hasBack: true },
+  { key: 'balaclava',          label: 'Balaclava',                     hasFront: true, hasBack: true }
+];
+
+// Hent mockup-key for en kategori+position (fra DB)
+function getCategoryMockup(catKey, posKey) {
+  if (!catKey || !posKey) return null;
+  const kat = (typeof getCategoryByKey === 'function') ? getCategoryByKey(catKey) : null;
+  if (!kat || !kat.positions) return null;
+  const pos = kat.positions[posKey];
+  if (!pos || !pos.mockup) return null;
+  return String(pos.mockup);
+}
+
+// Hent effektiv mockup for en gl+position: per-linje override > kategori default
+// gl.mockupOverride = { front: 'tshirt_b', back: 'tshirt_b', sleeve_l: ..., sleeve_r: ... }
+function getEffectiveMockup(gl, posKey) {
+  if (!gl || !posKey) return null;
+  const override = gl.mockupOverride?.[posKey];
+  if (override) return override;
+  const catKey = (typeof getProductCategory === 'function') ? getProductCategory(gl) : null;
+  return getCategoryMockup(catKey, posKey);
+}
+
+// Build URL til mockup-fil. posKey = 'front' / 'back' / 'sleeve_l' / 'sleeve_r'
+// Sleeves har ikke deres egne mockups (vi bruger blot ingen baggrund)
+function getMockupUrl(mockupKey, posKey) {
+  if (!mockupKey || !posKey) return null;
+  if (posKey === 'sleeve_l' || posKey === 'sleeve_r') return null;  // ingen mockup på sleeves
+  // Filnavn: {mockup_key}_{front|back}.png
+  const sideKey = (posKey === 'back') ? 'back' : 'front';
+  return `mockups/${mockupKey}_${sideKey}.png`;
+}
+
+// v1.120: Sæt mockup-override for en linje (gælder både front og back)
+function setLineMockup(lineIdx, mockupKey) {
+  const gl = garmentLinesData[lineIdx];
+  if (!gl) return;
+  if (!gl.mockupOverride) gl.mockupOverride = {};
+  if (mockupKey) {
+    gl.mockupOverride.front = mockupKey;
+    gl.mockupOverride.back  = mockupKey;
+  } else {
+    delete gl.mockupOverride.front;
+    delete gl.mockupOverride.back;
+  }
+  renderGarmentLines();
+}
+
+// v1.120: Nulstil mockup-override (tilbage til kategoriens default)
+function resetLineMockup(lineIdx, event) {
+  if (event) event.stopPropagation();
+  const gl = garmentLinesData[lineIdx];
+  if (!gl) return;
+  if (gl.mockupOverride) {
+    delete gl.mockupOverride.front;
+    delete gl.mockupOverride.back;
+  }
+  renderGarmentLines();
+}
+
 // Beregn tryk-zone størrelse i procent af felt-boksen
 // (dvs. cm-mål / canvas-størrelse)
 // v1.116: Tager nu også catKey for at bruge kategoriens felt-mål i stedet for hardcoded
@@ -8177,6 +8336,17 @@ function buildLineTrykSection(i, gl) {
       boxPxW = 60;
     }
     const dynamicSizeStyle = `width:${boxPxW}px;height:${boxPxH}px;`;
+
+    // v1.120: Hent mockup-billede til denne position (kun front/back har mockup)
+    const mockupKey = (typeof getEffectiveMockup === 'function')
+      ? getEffectiveMockup(gl, m.key) : null;
+    const mockupUrl = (typeof getMockupUrl === 'function' && mockupKey)
+      ? getMockupUrl(mockupKey, m.key) : null;
+    // Build mockup-overlay HTML — vises som baggrund i feltet med multiply-blend
+    const mockupOverlayHtml = mockupUrl
+      ? `<div class="design-zone-mockup" style="background-image:url('${mockupUrl}')"></div>`
+      : '';
+
     // v1.107: Ny tilstand 0 — position ikke tilladt for denne produktkategori
     const isAllowed = allowedPositions.includes(m.key);
     if (!isAllowed) {
@@ -8199,6 +8369,7 @@ function buildLineTrykSection(i, gl) {
       boxDrop      = `ondrop="handleDesignDropAuto(event, ${i}, '${m.key}')"`;
       boxStyle = `${dynamicSizeStyle}background-color:${tekstilFarve}`;
       boxInner = `
+        ${mockupOverlayHtml}
         <div class="design-zone-plus">+</div>
         <div class="design-zone-check">✓</div>`;
       deactivateBtn = '';
@@ -8224,6 +8395,7 @@ function buildLineTrykSection(i, gl) {
           </div>`;
       }
       boxInner = `
+        ${mockupOverlayHtml}
         ${zoneIndicatorHtml}
         <div class="design-zone-check">✓</div>`;
       deactivateBtn = `<button class="design-zone-deactivate" onclick="event.stopPropagation(); toggleLinePos(${i}, '${m.key}')" title="Fjern position">×</button>`;
@@ -8305,6 +8477,7 @@ function buildLineTrykSection(i, gl) {
         </div>`;
 
       boxInner = `
+        ${mockupOverlayHtml}
         <div class="tryk-zone ${animClass} ${isPdfClass}"
              id="tryk_zone_${i}_${m.key}"
              style="left:${posX}%;top:${posY}%;width:${zoneW}%;height:${zoneH}%"
@@ -8387,6 +8560,33 @@ function buildLineTrykSection(i, gl) {
                 : `<span class="auto-detected">auto-detekteret</span>`)
           }
         </div>
+        ${(() => {
+          // v1.120: Mockup-variant-vælger (kun synlig hvis kategori har default mockup)
+          const catKey2 = categoryKey;
+          const catFrontMockup = (typeof getCategoryMockup === 'function') ? getCategoryMockup(catKey2, 'front') : null;
+          if (!catFrontMockup) return '';  // kategori har ikke noget mockup
+          const currentMockup = (typeof getEffectiveMockup === 'function') ? getEffectiveMockup(gl, 'front') : catFrontMockup;
+          // Build options
+          let optionsHtml = '';
+          if (typeof AVAILABLE_MOCKUPS !== 'undefined') {
+            AVAILABLE_MOCKUPS.forEach(m => {
+              const sel = (m.key === currentMockup) ? ' selected' : '';
+              optionsHtml += '<option value="' + escapeHtml(m.key) + '"' + sel + '>' + escapeHtml(m.label) + '</option>';
+            });
+          }
+          const isOverride = !!(gl.mockupOverride && gl.mockupOverride.front);
+          const indicator = isOverride
+            ? `<span class="auto-detected">manuel variant</span>
+               <button class="btn-save-kat-default" onclick="resetLineMockup(${i}, event)" title="Nulstil til kategoriens default">↺ Nulstil</button>`
+            : `<span class="auto-detected">kategori-default</span>`;
+          return `<div class="product-category-row" style="margin-top:6px">
+            <label>Mockup:</label>
+            <select onchange="setLineMockup(${i}, this.value)">
+              ${optionsHtml}
+            </select>
+            ${indicator}
+          </div>`;
+        })()}
         <div class="design-zones">
           ${zones[0]}
           ${zones[1]}
