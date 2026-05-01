@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.119
+  Version: 1.119b
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.119  (2026-05-01)  ⭐ Aktuel — Salgstekst (description) i UI og PDF
+  v1.119b (2026-05-01)  ⭐ Aktuel — Kompakt layout for produktionstid + ekstra-tid
+          • Produktionstid-kort er nu 3-kolonner i 2-kolonne layoutet
+            (i stedet for at stable lodret) → fylder kun 1 række højt
+          • Padding/gap reduceret så hele blokken matcher højden af
+            ét enkelt produktionstid-kort
+          • Mobilt (≤700px): stables stadig lodret som før
+          • Ekstra-arbejdstid-kort har samme kompakte højde
+
+  v1.119  (2026-05-01) — Salgstekst (description) i UI og PDF
           • Stanley- og L-shop-mapping udvidet til at inkludere
             'description' i frontend garments-objektet
           • Ny helper getMeaningfulDescription(gl) — skipper redundante
@@ -789,7 +797,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.119 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.119b — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2632,11 +2640,44 @@
     margin-bottom: 10px;
     color: var(--text);
   }
-  /* Når prodtime sidder i 2-kolonne layout, skal kortene stable lodret pga. mindre plads */
+  /* v1.119b: Kompakt layout — prodtime forbliver 3-kolonner i 2-kolonne row,
+     så hele området kun fylder højden af ét kort */
   .delivery-options-row .prodtime-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    flex: 1;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  /* Kompakte prodtime-kort i delivery-row */
+  .delivery-options-row .prodtime-card {
+    padding: 8px 6px;
+  }
+  .delivery-options-row .prodtime-icon { font-size: 18px; margin-bottom: 2px; }
+  .delivery-options-row .prodtime-title { font-size: 12px; margin-bottom: 2px; }
+  .delivery-options-row .prodtime-sub { font-size: 10px; margin-bottom: 3px; }
+  .delivery-options-row .prodtime-date { font-size: 10px; }
+  /* Kompakt extra-hours card så højden matcher prodtime-kort */
+  .delivery-options-row .extra-hours-card {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+  .delivery-options-row .extra-hours-icon { font-size: 22px; }
+  .delivery-options-row .extra-hours-title { font-size: 12px; }
+  .delivery-options-row .extra-hours-sub { font-size: 10px; }
+  .delivery-options-row .extra-hours-select {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .delivery-options-row .extra-hours-summary {
+    font-size: 11px;
+    padding: 4px 8px;
+    min-height: 24px;
+  }
+  /* Mobile: stack og giv fuld størrelse */
+  @media (max-width: 700px) {
+    .delivery-options-row .prodtime-grid { grid-template-columns: 1fr; gap: 8px; }
+    .delivery-options-row .prodtime-card { padding: 12px; }
+    .delivery-options-row .prodtime-icon { font-size: 22px; margin-bottom: 4px; }
+    .delivery-options-row .prodtime-title { font-size: 13px; margin-bottom: 3px; }
+    .delivery-options-row .prodtime-sub { font-size: 11px; }
   }
 
   /* v1.117: Ekstra-timer-knap (fil-tilretning) */
@@ -2929,7 +2970,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.119
+    v1.119b
   </div>
 </div>
 
@@ -3022,7 +3063,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.119 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.119b · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
