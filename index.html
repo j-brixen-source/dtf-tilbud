@@ -4,12 +4,30 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.114
+  Version: 1.115
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.114  (2026-04-30)  ⭐ Aktuel — Tab 2: Produkter pr. kategori
+  v1.115  (2026-04-30)  ⭐ Aktuel — Realtime sync af kategorier + overrides
+          • Realtime subscription på produkt_kategorier-tabellen:
+              - Når en kollega tilføjer/redigerer/sletter en kategori,
+                opdateres alle åbne app-vinduer øjeblikkeligt
+              - Cache-reload + re-render af Tab 2-liste
+              - Re-render af tilbud-linjer (kategori-dropdown)
+              - Toast: "Kategorier opdateret af en kollega"
+          • Realtime subscription på produkt_kategori_overrides-tabellen:
+              - Når en kollega tilføjer/fjerner produkt-mapping,
+                opdateres lokal cache øjeblikkeligt
+              - Re-render hvis Tab 2 produkter-modal er åben
+              - Re-render af tilbud-linjer (kategori-source kan skifte)
+              - Toast: "Produkt-kategori-mapping opdateret"
+          • Anti-self-toast: hvis brugeren selv lige har lavet en ændring
+            (<2 sek), vises ingen toast (undgår "du gemte" → toast-spam)
+          • Begge subscriptions startes ved app-init efter loadKategorier
+          • Følger samme mønster som subscribeToSettingsChanges (v1.068)
+
+  v1.114  (2026-04-30) — Tab 2: Produkter pr. kategori
           • Hver kategori-række har nu en "📋 X produkter"-knap der viser
             antal produkter mappet til kategorien (auto + gemt)
           • Klik på knappen åbner modal med liste over alle produkter:
@@ -681,7 +699,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.114 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.115 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2694,7 +2712,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.114
+    v1.115
   </div>
 </div>
 
@@ -2787,7 +2805,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.114 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.115 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3904,6 +3922,9 @@ async function saveKategori(existingId, existingKey) {
   const saveBtn = document.getElementById('katSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Gemmer…'; }
 
+  // v1.115: Marker self-change så realtime-subscription ikke viser "kollega"-toast
+  window._kategoriLastSelfChange = Date.now();
+
   try {
     let resp;
     if (isEdit) {
@@ -3942,6 +3963,9 @@ async function deleteKategori(id, event) {
 
   const sb = (typeof getSB === 'function') ? getSB() : null;
   if (!sb) { showToast('Supabase ikke klar', 'error'); return; }
+
+  // v1.115: Marker self-change så realtime-subscription ikke viser "kollega"-toast
+  window._kategoriLastSelfChange = Date.now();
 
   try {
     const { error } = await sb.from('produkt_kategorier').delete().eq('id', id);
@@ -4253,6 +4277,9 @@ async function selectProduktToAdd(sku) {
   // Bestem source ud fra cache
   const item = _katProduktModalState.cache.find(p => p.sku === sku);
   const sourceVal = item ? (item.fromSS ? 'stanley' : 'lshop') : null;
+
+  // v1.115: Marker self-change
+  window._overridesLastSelfChange = Date.now();
 
   try {
     const { error } = await sb
@@ -4584,6 +4611,123 @@ function subscribeToSettingsChanges() {
     dbLog('Realtime: lytter på indstillinger-ændringer');
   } catch (err) {
     dbLog('subscribeToSettingsChanges fejlede', err.message);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// v1.115: Realtime sync af produkt-kategorier + per-produkt overrides
+// ──────────────────────────────────────────────────────────────────────
+
+let _kategorierRealtimeChannel = null;
+let _kategoriOverridesRealtimeChannel = null;
+
+// Anti-self-toast: sættes til Date.now() når brugeren selv saver/sletter,
+// så subscription ikke viser "kollega"-toast for egne ændringer
+window._kategoriLastSelfChange = 0;
+window._overridesLastSelfChange = 0;
+
+function _isOwnRecentChange(timestampVar) {
+  const last = window[timestampVar] || 0;
+  return (Date.now() - last) < 2000;  // 2 sek vindue
+}
+
+function subscribeToKategorierChanges() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb || _kategorierRealtimeChannel) return;
+
+  try {
+    _kategorierRealtimeChannel = sb
+      .channel('produkt-kategorier-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'produkt_kategorier' },
+        (payload) => {
+          const isOwn = _isOwnRecentChange('_kategoriLastSelfChange');
+
+          // Reload hele cachen — enkelt og pålideligt for ~10-20 rows
+          loadKategorier().then(() => {
+            // Re-render Tab 2 hvis åben (renderKategorierList kaldes inde i loadKategorier
+            // hvis container findes — ikke nødvendigt at gøre det igen)
+
+            // Re-render tilbud-linjer hvis quote-panel er aktiv (kategori-dropdown
+            // kan have nye options eller ændrede labels)
+            const quotePanel = document.getElementById('panel-quote');
+            if (quotePanel && quotePanel.classList.contains('active')) {
+              if (typeof renderGarmentLines === 'function') renderGarmentLines();
+              if (typeof recalc === 'function') recalc();
+            }
+
+            // Hvis produkter-modal er åben, refresh dens cache
+            if (_katProduktModalState && _katProduktModalState.katKey) {
+              _katProduktModalState.cache = buildKatProduktCache();
+              renderKategoriProdukterContent();
+            }
+
+            // Toast (kun hvis det IKKE er brugerens egen ændring)
+            if (!isOwn) {
+              const evtLabel = payload.eventType === 'INSERT' ? 'tilføjet'
+                : payload.eventType === 'DELETE' ? 'slettet'
+                : 'opdateret';
+              showToast('Kategori ' + evtLabel + ' af en kollega', 'success', 3500);
+            }
+          });
+        })
+      .subscribe();
+    dbLog('Realtime: lytter på produkt_kategorier-ændringer');
+  } catch (err) {
+    dbLog('subscribeToKategorierChanges fejlede', err.message);
+  }
+}
+
+function subscribeToKategoriOverridesChanges() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb || _kategoriOverridesRealtimeChannel) return;
+
+  try {
+    _kategoriOverridesRealtimeChannel = sb
+      .channel('produkt-kategori-overrides-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'produkt_kategori_overrides' },
+        (payload) => {
+          const isOwn = _isOwnRecentChange('_overridesLastSelfChange');
+
+          // Direkte opdatering af cache fra payload (ingen full reload nødvendig)
+          if (!window._kategoriOverrides) window._kategoriOverrides = {};
+          if (payload.eventType === 'DELETE') {
+            const sku = payload.old?.sku;
+            if (sku) delete window._kategoriOverrides[sku];
+          } else {
+            const row = payload.new;
+            if (row && row.sku && row.category_key) {
+              window._kategoriOverrides[row.sku] = row.category_key;
+            }
+          }
+
+          // Re-render tilbud-linjer hvis quote-panel er aktiv
+          const quotePanel = document.getElementById('panel-quote');
+          if (quotePanel && quotePanel.classList.contains('active')) {
+            if (typeof renderGarmentLines === 'function') renderGarmentLines();
+            if (typeof recalc === 'function') recalc();
+          }
+
+          // Refresh produkter-modal hvis åben
+          if (_katProduktModalState && _katProduktModalState.katKey) {
+            _katProduktModalState.cache = buildKatProduktCache();
+            renderKategoriProdukterContent();
+          }
+
+          // Toast (kun hvis det IKKE er brugerens egen ændring)
+          if (!isOwn) {
+            const evtLabel = payload.eventType === 'INSERT' ? 'tilføjet'
+              : payload.eventType === 'DELETE' ? 'fjernet'
+              : 'opdateret';
+            const sku = (payload.new || payload.old)?.sku || '';
+            showToast('Produkt-mapping ' + evtLabel + (sku ? ' for ' + sku : '') + ' af en kollega', 'success', 3500);
+          }
+        })
+      .subscribe();
+    dbLog('Realtime: lytter på produkt_kategori_overrides-ændringer');
+  } catch (err) {
+    dbLog('subscribeToKategoriOverridesChanges fejlede', err.message);
   }
 }
 
@@ -7430,6 +7574,9 @@ async function saveKategoriOverride(lineIdx, event) {
     source: gl.fromSS ? 'stanley' : 'lshop'
   };
 
+  // v1.115: Marker self-change så realtime ikke viser "kollega"-toast
+  window._overridesLastSelfChange = Date.now();
+
   try {
     const { error } = await sb
       .from('produkt_kategori_overrides')
@@ -7457,6 +7604,8 @@ async function deleteKategoriOverride(sku) {
   if (!sku) return;
   const sb = (typeof getSB === 'function') ? getSB() : null;
   if (!sb) return;
+  // v1.115: Marker self-change
+  window._overridesLastSelfChange = Date.now();
   try {
     const { error } = await sb.from('produkt_kategori_overrides').delete().eq('sku', sku);
     if (error) throw error;
@@ -9396,12 +9545,16 @@ function onAuthSuccess() {
   // v1.112: Hent produkt-kategorier fra Supabase ved app-start (ikke kun ved Tab 2-klik).
   // Re-render tøjlinjer når kategorier er klar så dropdown viser kategoriens sizes.
   // v1.113: Hent også per-produkt kategori-overrides parallelt
+  // v1.115: Start realtime-subscriptions efter load er færdig
   Promise.all([loadKategorier(), loadKategoriOverrides()]).then(() => {
     if (typeof garmentLinesData !== 'undefined' && Array.isArray(garmentLinesData)) {
       garmentLinesData.forEach(gl => migrateGarmentLineSizes(gl));
     }
     if (typeof renderGarmentLines === 'function') renderGarmentLines();
     if (typeof recalc === 'function') recalc();
+    // v1.115: Start subscriptions for begge tabeller (sker kun én gang pr. session)
+    subscribeToKategorierChanges();
+    subscribeToKategoriOverridesChanges();
   });
   // v1.061: Startsiden er nu Nyt tilbud — sørg for at panel-init køres
   // (renderGarmentLines + recalc) nu hvor panelet allerede har klassen "active"
