@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.120f
+  Version: 1.120g
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.120f (2026-05-01)  ⭐ Aktuel — Fix: drag-handles klikbare igen
+  v1.120g (2026-05-01)  ⭐ Aktuel — Fix: action-knapper (centrer/fjern) tilbage på plads
+          • BUG: I v1.120f overskrev en :not()-CSS-regel position:absolute
+            med position:relative på .design-zone-actions, så centrer- og
+            fjern-knapperne ikke længere blev positioneret right:-38px
+            udenfor felt-boksen.
+          • FIX: :not()-reglen sætter nu kun z-index, ikke position.
+            position arves fra de oprindelige regler.
+
+  v1.120f (2026-05-01) — Fix: drag-handles klikbare igen
           • BUG: Efter v1.120 mockup-overlay kunne brugeren ikke længere
             trække i drag-handles (tlh/trh/blh/brh) for at skalere
             tryk-zonen. Mockup-laget blokerede klik trods pointer-events:none.
@@ -882,7 +890,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.120f — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.120g — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -1790,9 +1798,10 @@
     pointer-events: none !important;
     z-index: 2;
   }
-  /* Sørg for at design + zone-indicator + tryk-zone vises ovenpå mockup */
+  /* Sørg for at design + zone-indicator + tryk-zone vises ovenpå mockup.
+     v1.120g: Kun z-index sættes — position arves fra eksisterende regler
+     så .design-zone-actions (position:absolute, right:-38px) ikke brydes. */
   .design-zone-box > *:not(.design-zone-mockup):not(.design-zone-color-fill) {
-    position: relative;
     z-index: 3;
   }
   /* v1.120f: Sørg for at handles altid er klikbare og over mockup-laget */
@@ -3096,7 +3105,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.120f
+    v1.120g
   </div>
 </div>
 
@@ -3189,7 +3198,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.120f · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.120g · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
