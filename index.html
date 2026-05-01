@@ -4,12 +4,36 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.117
+  Version: 1.118
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.117  (2026-05-01)  ⭐ Aktuel — Ekstra-timer til fil-tilretning
+  v1.118  (2026-05-01)  ⭐ Aktuel — Ordreseddel = Tilbud (samme layout)
+          • Hele den gamle generateOrdreseddelPDF (~217 linjer) er fjernet
+          • Erstattet med tynd wrapper der kalder generateTilbudPDF i
+            "ordre-mode" — eneste forskelle:
+              - Titel: "Tilbud" → "Ordre"
+              - Filnavn: "Tilbud_xxx" → "Ordre_xxx"
+          • Ordreseddel og Tilbud har nu IDENTISK layout — samme
+            tøj-tabel, design-mockups, prisoversigt, noter
+          • Færre fejlkilder: ændringer i tilbud-PDF gælder begge
+          • Eksisterende knap "🖨️ Ordreseddel til trykker" beholder
+            samme funktion — bare med nyt indhold
+
+  v1.117b (2026-05-01) — Fix: PDF-mockup-aspect følger felt-mål
+          • Bug fra v1.116: renderDesignMockup() brugte stadig hardcoded
+            280×392 (front/back) og 140×187 (sleeves) som canvas-størrelse.
+            Det betød at en cap (felt 22×12 cm = bredt-lavt) blev tegnet
+            i et højt smalt felt på PDF'en — designet "stretchede".
+          • Nu: Canvas-størrelse beregnes fra kategoriens felt_w/felt_h,
+            samme aspect-ratio-logik som UI'et bruger.
+          • PDF-cellerne (mm-mål) beregnes også med korrekt aspect så
+            mockup-billedet ikke strækkes ved indsættelse.
+          • Cap, totebag, forklæde, napkin, bukser m.fl. ser nu visuelt
+            korrekte ud i tilbud-PDF og ordreseddel-PDF.
+
+  v1.117  (2026-05-01) — Ekstra-timer til fil-tilretning
           • Layout-refactor: Produktionstid + Ekstra-timer side om side
             i 2-kolonne grid (50/50 på desktop, stablet på mobil ≤700px)
           • NY: Ekstra-timer-knap til at tillægge fil-tilretningstid
@@ -752,7 +776,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.117 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.118 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2892,7 +2916,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.117
+    v1.118
   </div>
 </div>
 
@@ -2985,7 +3009,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.117 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.118 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -7024,13 +7048,38 @@ function loadImageForCanvas(url) {
 }
 
 // Render et design-mockup til canvas → returnerer dataURL (PNG).
+// v1.117b: Canvas-aspect følger nu kategoriens felt_w/felt_h (samme som UI).
+// outputW/outputH-parametre bevares for bagudkompatibilitet, men hvis kun den
+// ene angives, beregnes den anden ud fra aspect-ratio (eller default).
 async function renderDesignMockup(gl, pos, outputW, outputH) {
   const design = gl.designs?.[pos];
   if (!design || !design.url) return null;
 
   const isSleeve = (pos === 'sleeve_l' || pos === 'sleeve_r');
-  const W = outputW || (isSleeve ? 140 : 280);
-  const H = outputH || (isSleeve ? 187 : 392);
+
+  // v1.117b: Hent kategoriens felt-mål for korrekt aspect (samme som UI)
+  const _catKeyEarly = getProductCategory(gl);
+  const feltCm = (typeof getCategoryFelt === 'function')
+    ? getCategoryFelt(_catKeyEarly, pos)
+    : (isSleeve ? { w: 22.5, h: 30 } : { w: 50, h: 70 });
+
+  // Beregn W/H: fit inden for max-grænser med korrekt aspect-ratio
+  const maxW = isSleeve ? 140 : 280;
+  const maxH = isSleeve ? 187 : 392;
+  let W = outputW || maxW;
+  let H = outputH || ((feltCm.h / feltCm.w) * W);
+  // Hvis H overskrider max → reskalér så højde passer og bredde justeres
+  if (H > maxH) {
+    H = maxH;
+    W = (feltCm.w / feltCm.h) * H;
+  }
+  // Min-bredde for at undgå mikro-canvas
+  if (W < 40) {
+    W = 40;
+    H = (feltCm.h / feltCm.w) * W;
+  }
+  W = Math.round(W);
+  H = Math.round(H);
 
   const canvas = document.createElement('canvas');
   // 2× density for skarpt billede i PDF
@@ -7201,13 +7250,34 @@ async function pdfRenderMockupsForOneLine(doc, gl, startY, margin) {
   else if (N === 3) { cellW = 22; cellH = 31; }
   else              { cellW = 19; cellH = 26; }
 
+  // v1.117b: Beregn cell-aspect fra kategoriens felt-mål så billeder ikke strækkes.
+  // cellW/cellH ovenfor er max-værdier (fra v1.101) — vi reskalerer cell ned hvis
+  // aspect-ratio kræver det, så billedet altid passer indenfor uden distortion.
+  const _catKeyMockup = getProductCategory(gl);
+  const _maxCellW = cellW;
+  const _maxCellH = cellH;
+
   const gap = 4;
   let x = margin;
   let maxH = 0;
   for (const m of activePositions) {
     const isSleeve = (m.key === 'sleeve_l' || m.key === 'sleeve_r');
-    const w = isSleeve ? cellW * 0.5 : cellW;
-    const h = isSleeve ? cellH * 0.5 : cellH;
+    // v1.117b: Hent felt-aspect for denne specifikke position
+    const feltCm = (typeof getCategoryFelt === 'function')
+      ? getCategoryFelt(_catKeyMockup, m.key)
+      : (isSleeve ? { w: 22.5, h: 30 } : { w: 50, h: 70 });
+    const aspect = feltCm.h / feltCm.w;  // højde/bredde-ratio
+
+    // Sleeves er stadig 50% mindre end front/back
+    const baseW = isSleeve ? _maxCellW * 0.5 : _maxCellW;
+    const baseH = isSleeve ? _maxCellH * 0.5 : _maxCellH;
+    // Beregn (w, h) der passer indenfor (baseW, baseH) men respekterer aspect
+    let w = baseW;
+    let h = w * aspect;
+    if (h > baseH) {
+      h = baseH;
+      w = h / aspect;
+    }
 
     // Position-label over mockup
     doc.setFont('helvetica','bold');
@@ -9119,7 +9189,10 @@ function pdfFooter(doc, sideNr, totalSider) {
 }
 
 // ── Generér TILBUD PDF (til kunde) ──
-async function generateTilbudPDF() {
+async function generateTilbudPDF(mode) {
+  // v1.118: 'mode' = 'tilbud' (default) eller 'ordre' — samme layout, kun titel/filnavn ændres
+  const isOrdre = (mode === 'ordre');
+  const _title = isOrdre ? 'Ordre' : 'Tilbud';
   try {
     if(typeof window.jspdf === 'undefined') { alert('PDF bibliotek ikke loaded. Genindlæs siden.'); return; }
     const { jsPDF } = window.jspdf;
@@ -9132,7 +9205,7 @@ async function generateTilbudPDF() {
     const gyldigTil = new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('da-DK');
 
     const margin = 20;
-    let y = pdfHeader(doc, 'Tilbud', tilbudNr);
+    let y = pdfHeader(doc, _title, tilbudNr);
 
     // ── Kunde-blok + dato-blok (to kolonner) ──
     doc.setFont('helvetica','bold');
@@ -9448,9 +9521,11 @@ async function generateTilbudPDF() {
 
     pdfFooter(doc, 1, 1);
 
-    const filnavn = `Tilbud_${tilbudNr}${kunde?.firma?'_'+kunde.firma.replace(/[^a-zA-Z0-9]/g,'-'):''}.pdf`;
+    // v1.118: Filnavn afhænger af mode ('Tilbud_xxx' eller 'Ordre_xxx')
+    const _prefix = isOrdre ? 'Ordre' : 'Tilbud';
+    const filnavn = `${_prefix}_${tilbudNr}${kunde?.firma?'_'+kunde.firma.replace(/[^a-zA-Z0-9]/g,'-'):''}.pdf`;
     doc.save(filnavn);
-    dbLog('Tilbud PDF genereret', filnavn);
+    dbLog(_title + ' PDF genereret', filnavn);
 
   } catch(err) {
     dbLog('PDF fejl', err.message);
@@ -9458,225 +9533,14 @@ async function generateTilbudPDF() {
   }
 }
 
-// ── Generér ORDRESEDDEL PDF (til trykker) ──
+// v1.118: Ordreseddel = præcis samme PDF som tilbud, kun titel "Ordre" og
+// filnavn "Ordre_xxx". Tidligere havde den sit eget separate ~217-linjer-
+// layout, men det blev forsøgt holdt i sync med tilbud manuelt — fejlkilde.
+// Nu er der kun ÉN PDF-renderer, og ordreseddel er en tynd wrapper.
 async function generateOrdreseddelPDF() {
-  try {
-    if(typeof window.jspdf === 'undefined') { alert('PDF bibliotek ikke loaded.'); return; }
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({unit:'mm', format:'a4'});
-
-    const d = recalc();
-    const kunde = kundeInfo();
-    const tilbudNr = await getNextTilbudNummer();
-    const dato = new Date().toLocaleDateString('da-DK', {day:'numeric', month:'long', year:'numeric'});
-
-    const margin = 20;
-    let y = pdfHeader(doc, 'Ordreseddel', tilbudNr);
-
-    // ── Produktions-info-blok ──
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...PDF_COLORS.muted);
-    doc.text('KUNDE', margin, y);
-    doc.text('ORDREDATO', 70, y);
-    doc.text('LEVERING', 115, y);
-    doc.text('ANTAL', 155, y);
-    doc.text('POS.', 180, y);
-    y += 5;
-
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
-    doc.setTextColor(...PDF_COLORS.text);
-    const kundeLabel = kunde ? (kunde.firma || kunde.navn || '—') : '—';
-    doc.text(kundeLabel.substring(0,22), margin, y);
-    doc.text(dato, 70, y);
-    const levDato = d.prodTimeData?.dato ? formatDate(d.prodTimeData.dato) : '—';
-    doc.text(levDato, 115, y);
-    doc.text(String(d.totalQty || 0) + ' stk', 155, y);
-    doc.text(String(d.numPos || 0), 180, y);
-    y += 6;
-
-    // Produktionstid-badge
-    if(d.prodTimeKey && d.prodTimeKey !== 'standard') {
-      doc.setFillColor(...PDF_COLORS.accent);
-      doc.setTextColor(255,255,255);
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(9);
-      const badgeText = d.prodTimeKey === 'express' ? '⚡ EXPRESS' : '🚀 SUPER EXPRESS';
-      const textWidth = doc.getTextWidth(badgeText) + 6;
-      doc.roundedRect(margin, y, textWidth, 6, 1.5, 1.5, 'F');
-      doc.text(badgeText, margin+3, y+4);
-      doc.setTextColor(...PDF_COLORS.text);
-      y += 10;
-    } else {
-      y += 4;
-    }
-
-    // ── Stor tabel: Produktionsoversigt ──
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...PDF_COLORS.muted);
-    doc.text('PRODUKTER TIL TRYK', margin, y);
-    y += 5;
-
-    // Byg detaljeret produktionsoversigt pr. tøjlinje
-    const prodRows = [];
-    // v1.103: Parallelt array med hex-værdier (matcher prodRows index)
-    const farveHexByRow = [];
-    garmentLinesData.forEach((gl, idx) => {
-      if(!gl.sku) return;
-      const totalQty = Object.values(gl.sizeQtys||{}).reduce((s,v)=>s+(+v||0),0) + (+gl.manualQty||0);
-      if(totalQty === 0) return;
-
-      const sizeDetail = Object.entries(gl.sizeQtys||{})
-        .filter(([,n])=>+n>0)
-        .map(([s,n])=>`${s}: ${n}`)
-        .join(', ') || `${gl.manualQty||0} stk`;
-
-      prodRows.push([
-        gl.name || '—',
-        gl.sku,
-        sizeDetail,
-        gl.selectedColor || '—',
-        '',                                   // v1.104: tom celle — swatch via didDrawCell
-        String(totalQty),
-      ]);
-      farveHexByRow.push(
-        gl.selectedColor
-          ? (gl.colorHexMap?.[gl.selectedColor] || (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || null)
-          : null
-      );
-    });
-
-    if(prodRows.length > 0) {
-      doc.autoTable({
-        startY: y,
-        head: [['Produkt', 'SKU', 'Størrelser', 'Farve', '', 'Antal']],
-        body: prodRows,
-        theme: 'plain',
-        styles: {
-          fontSize: 9,
-          cellPadding: {top:3.5, right:4, bottom:3.5, left:4},
-          textColor: PDF_COLORS.text,
-          lineColor: PDF_COLORS.border,
-          lineWidth: 0.1,
-        },
-        headStyles: {
-          fontStyle: 'bold',
-          textColor: PDF_COLORS.muted,
-          fontSize: 8,
-          lineWidth: {bottom: 0.3},
-        },
-        columnStyles: {
-          1: { font: 'courier', fontSize: 8 },
-          4: { cellWidth: 10 },                          // v1.104: swatch-kolonne — smal
-          5: { halign: 'right', fontStyle: 'bold' },     // Antal
-        },
-        margin: { left: margin, right: margin },
-        // v1.104: Tegn farve-swatch i swatch-kolonnen (index 4)
-        didDrawCell: function(data) {
-          if (data.section === 'body' && data.column.index === 4) {
-            const hex = farveHexByRow[data.row.index];
-            const rgb = hexToRgb(hex);
-            if (rgb) {
-              const padX = 1.5;
-              const padY = 1.5;
-              const swX = data.cell.x + padX;
-              const swY = data.cell.y + padY;
-              const swW = data.cell.width - 2 * padX;
-              const swH = data.cell.height - 2 * padY;
-              doc.setFillColor(rgb[0], rgb[1], rgb[2]);
-              doc.setDrawColor(...PDF_COLORS.border);
-              doc.setLineWidth(0.15);
-              doc.rect(swX, swY, swW, swH, 'FD');
-            }
-          }
-        },
-      });
-      y = doc.lastAutoTable.finalY + 8;
-    }
-
-    // ── Tryk-positioner tabel ──
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...PDF_COLORS.muted);
-    doc.text('TRYKPOSITIONER & STØRRELSE', margin, y);
-    y += 5;
-
-    if(d.printLines && d.printLines.length > 0) {
-      // v1.050: Tryk er pr. produkt — inkluder produktnavn + SKU
-      const trykRows = d.printLines.map(pl => {
-        // Parse label: "Forside – Stort × 50 stk"
-        const m = pl.label.match(/^(.+?)\s*–\s*(.+?)\s*×\s*(\d+)\s*stk$/);
-        const productCell = `${pl.lineName||'—'}${pl.sku?'\n'+pl.sku:''}`;
-        if(m) return [productCell, m[1], m[2], m[3] + ' stk', '☐'];
-        return [productCell, pl.label, '', '', '☐'];
-      });
-
-      doc.autoTable({
-        startY: y,
-        head: [['Produkt', 'Position', 'Størrelse', 'Antal', 'Klar']],
-        body: trykRows,
-        theme: 'plain',
-        styles: {
-          fontSize: 10,
-          cellPadding: {top:4, right:4, bottom:4, left:4},
-          textColor: PDF_COLORS.text,
-          lineColor: PDF_COLORS.border,
-          lineWidth: 0.1,
-        },
-        headStyles: {
-          fontStyle: 'bold',
-          textColor: PDF_COLORS.muted,
-          fontSize: 8,
-          lineWidth: {bottom: 0.3},
-        },
-        columnStyles: {
-          0: { fontStyle: 'bold', fontSize: 9 },
-          3: { halign: 'right' },
-          4: { halign: 'center', cellWidth: 15 },
-        },
-        margin: { left: margin, right: margin },
-      });
-      y = doc.lastAutoTable.finalY + 10;
-    }
-
-    // v1.099: Tilføj design-mockups (canvas-rendering) efter tryk-tabel
-    y = await pdfRenderDesignsForLines(doc, garmentLinesData, y, margin);
-
-    // ── Noter til produktion (tomme linjer til håndskrift) ──
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...PDF_COLORS.muted);
-    doc.text('NOTER TIL PRODUKTION', margin, y);
-    y += 6;
-    for(let i=0; i<4; i++) {
-      pdfLine(doc, margin, y, 210-margin, y);
-      y += 7;
-    }
-    y += 4;
-
-    // ── Underskrifts-boks ──
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...PDF_COLORS.muted);
-    doc.text('GODKENDT AF', margin, y);
-    doc.text('DATO', 120, y);
-    y += 15;
-    pdfLine(doc, margin, y, 95, y);
-    pdfLine(doc, 120, y, 165, y);
-
-    pdfFooter(doc, 1, 1);
-
-    const filnavn = `Ordreseddel_${tilbudNr}${kunde?.firma?'_'+kunde.firma.replace(/[^a-zA-Z0-9]/g,'-'):''}.pdf`;
-    doc.save(filnavn);
-    dbLog('Ordreseddel PDF genereret', filnavn);
-
-  } catch(err) {
-    dbLog('Ordreseddel PDF fejl', err.message);
-    alert('Fejl ved PDF-generering: '+err.message);
-  }
+  return generateTilbudPDF('ordre');
 }
+
 
 // ══════════════════════════════════════════════════════════════
 
