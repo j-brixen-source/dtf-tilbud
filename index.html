@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.118
+  Version: 1.119
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.118  (2026-05-01)  ⭐ Aktuel — Ordreseddel = Tilbud (samme layout)
+  v1.119  (2026-05-01)  ⭐ Aktuel — Salgstekst (description) i UI og PDF
+          • Stanley- og L-shop-mapping udvidet til at inkludere
+            'description' i frontend garments-objektet
+          • Ny helper getMeaningfulDescription(gl) — skipper redundante
+            beskrivelser hvor description bare er en del af name
+            (fx CB15: name="Beechfield – Ultimate 5 Panel Cap",
+             description="Ultimate 5 Panel Cap" → skip)
+          • Brugbar når description tilføjer info (fx Freestyler:
+            description="The unisex dry-handfeel heavyweight t-shirt")
+          • Vises som lille grå tekst i tilbud-UI under Vare-dropdown
+            når et produkt er valgt
+          • Vises også i tilbud-PDF under produktnavnet i tøj-tabellen
+
+  v1.118  (2026-05-01) — Ordreseddel = Tilbud (samme layout)
           • Hele den gamle generateOrdreseddelPDF (~217 linjer) er fjernet
           • Erstattet med tynd wrapper der kalder generateTilbudPDF i
             "ordre-mode" — eneste forskelle:
@@ -776,7 +789,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.118 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.119 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -2916,7 +2929,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.118
+    v1.119
   </div>
 </div>
 
@@ -3009,7 +3022,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.118 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.119 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -5880,6 +5893,13 @@ function renderGarmentLines() {
         </div>
       </div>
       ${gl._duplicated ? '<div style="font-size:10px;color:var(--amber);margin:-4px 0 6px 0">⧉ Duplikeret linje · ekstra opstart tillægges</div>' : ''}
+      ${(() => {
+        // v1.119: Vis salgstekst (description) hvis den giver ny info
+        const desc = getMeaningfulDescription(gl);
+        return desc
+          ? `<div style="font-size:11px;color:var(--muted);font-style:italic;margin:-2px 0 8px 0;line-height:1.4">${escapeHtml(desc)}</div>`
+          : '';
+      })()}
       ${sizes.length>0 ? `
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Antal pr. størrelse <span style="color:var(--green);font-weight:500" id="linetotal_${i}">${totalQty>0?'· I alt: '+totalQty+' stk':''}</span></div>
         <div class="gline-sizes">${sizeInputs}</div>
@@ -7807,6 +7827,21 @@ function detectProductCategory(gl) {
   return 'other';
 }
 
+// v1.119: Returnér description hvis den giver ny information
+// (springer redundante beskrivelser over hvor description bare gentager name)
+function getMeaningfulDescription(gl) {
+  if (!gl) return '';
+  const desc = String(gl.description || '').trim();
+  if (!desc) return '';
+  const name = String(gl.name || '').toLowerCase();
+  const descLower = desc.toLowerCase();
+  // Skip hvis description er ord-for-ord indeholdt i name (fx CB15)
+  if (name.includes(descLower)) return '';
+  // Skip hvis description er meget kort (formentlig redundant)
+  if (desc.length < 10) return '';
+  return desc;
+}
+
 // Hent kategori-key for en gl (manuel override > gemt DB-override > smart-default)
 // v1.113: 4-lags lookup
 function getProductCategory(gl) {
@@ -8413,6 +8448,8 @@ function recalc() {
     clothesLines.push({
       name: gl.name||'Tøj',
       sku:  gl.sku||'',
+      // v1.119: Salgstekst til PDF (kun hvis den giver ny information)
+      description: getMeaningfulDescription(gl),
       farve: gl.selectedColor || '',  // v1.101: farve til PDF-tabeller
       // v1.103: hex til farve-stribe i PDF-cellen
       farveHex: gl.selectedColor
@@ -9256,8 +9293,9 @@ async function generateTilbudPDF(mode) {
 
     // ── Tabel: Tøjlinjer ──
     // v1.104: swatch-kolonne efter Farve (egen kolonne, ingen text-overlap)
+    // v1.119: description-tekst (salgstekst) under produktnavn hvis tilgængelig
     const tøjRows = d.clothesLines.map(cl => [
-      cl.name,
+      cl.description ? cl.name + '\n' + cl.description : cl.name,
       cl.sku || '—',
       cl.sizes || '—',
       cl.farve || '—',
@@ -9270,6 +9308,8 @@ async function generateTilbudPDF(mode) {
     if(tøjRows.length > 0) {
       // v1.103: Lookup-tabel til farve-hex pr. række (bruges i didDrawCell)
       const farveHexByRow = d.clothesLines.map(cl => cl.farveHex || null);
+      // v1.119: Lookup til description pr. række (bruges i didDrawCell for kolonne 0)
+      const descriptionByRow = d.clothesLines.map(cl => cl.description || '');
       doc.autoTable({
         startY: y,
         head: [['Produkt', 'SKU', 'Størrelser', 'Farve', '', 'Antal', 'Stk-pris', 'Total']],
@@ -9297,7 +9337,20 @@ async function generateTilbudPDF(mode) {
           7: { halign: 'right' },         // Total
         },
         margin: { left: margin, right: margin },
+        // v1.119: Skjul description-linjen så den ikke tegnes med almindelig farve
+        // Vi tegner den selv via didDrawCell med mindre + grå tekst
+        willDrawCell: function(data) {
+          if (data.section === 'body' && data.column.index === 0) {
+            const desc = descriptionByRow[data.row.index];
+            if (desc) {
+              // Sæt cellens tekst-content til kun navn (uden description)
+              // og tegn description selv bagefter
+              data.cell.text = [data.cell.raw.split('\n')[0]];
+            }
+          }
+        },
         // v1.104: Tegn farve-swatch i swatch-kolonnen (index 4)
+        // v1.119: Tegn description som lille grå tekst i Produkt-cellen (index 0)
         didDrawCell: function(data) {
           if (data.section === 'body' && data.column.index === 4) {
             const hex = farveHexByRow[data.row.index];
@@ -9313,6 +9366,25 @@ async function generateTilbudPDF(mode) {
               doc.setDrawColor(...PDF_COLORS.border);
               doc.setLineWidth(0.15);
               doc.rect(swX, swY, swW, swH, 'FD');
+            }
+          }
+          // v1.119: Tegn description i grå/lille tekst under produktnavnet
+          if (data.section === 'body' && data.column.index === 0) {
+            const desc = descriptionByRow[data.row.index];
+            if (desc) {
+              doc.setFont('helvetica', 'italic');
+              doc.setFontSize(7);
+              doc.setTextColor(...PDF_COLORS.muted);
+              // Position: under navne-linjen i samme celle
+              const tx = data.cell.x + (data.cell.padding('left'));
+              const ty = data.cell.y + data.cell.padding('top') + 7.5; // ~under navnet
+              const maxW = data.cell.width - 2 * (data.cell.padding('left') || 0);
+              const lines = doc.splitTextToSize(desc, maxW);
+              doc.text(lines, tx, ty);
+              // Reset til standard
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(9);
+              doc.setTextColor(...PDF_COLORS.text);
             }
           }
         },

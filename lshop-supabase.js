@@ -144,6 +144,8 @@
           brand:      p.brand || '',
           searchText: p.search_text || (p.name + ' ' + p.sku + ' ' + (p.brand || '')).toLowerCase(),
           productType: p.product_type || '',
+          // v1.119: description til salgstekst i UI/PDF
+          description: p.description || '',
           costPrice:  cp,
           costPriceMin: minEk,
           costPriceMax: maxEk,
@@ -557,6 +559,8 @@
           brand:      p.brand || 'Stanley Stella',
           searchText: p.search_text || (`stanley stella ${p.name} ${p.style_code}`).toLowerCase(),
           productType: p.product_type || '',
+          // v1.119: description til salgstekst i UI/PDF
+          description: p.description || '',
           costPrice:  Number(cp.toFixed(2)),
           costPriceMin: Number(minEkDkk.toFixed(2)),
           costPriceMax: Number(maxEkDkk.toFixed(2)),
