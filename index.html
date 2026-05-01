@@ -4,12 +4,56 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.120b
+  Version: 1.120e
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.120b (2026-05-01)  ⭐ Aktuel — Fix: kun tøj farves, ikke baggrund
+  v1.120e (2026-05-01)  ⭐ Aktuel — 3 fotorealistiske totebag-mockups
+          • Erstattet placeholder SVG-totebag med 3 fotorealistiske
+            varianter klippet fra Freepik premium-billede 4206
+            (vectorpocket, premium-licens):
+              - totebag_a: klassisk lang/smal (mest typisk)
+              - totebag_b: kort/bred shopper
+              - totebag_c: lang variant med justerede håndtag-detaljer
+          • Hver har _front + _back (identiske, da totebag's bag- og
+            forside ser ens ud) → 6 PNG-filer total
+          • Bruger Python/Pillow + luminance-baseret alpha så taskens
+            naturlige skygger bevares men baggrunden gøres transparent
+          • Brugeren skal opdatere totebag-kategoriens default mockup
+            fra 'totebag' (gammel) til 'totebag_a' via SQL eller modal
+
+  v1.120d (2026-05-01) — Hoodie front/back fix + ny totebag-mockup
+          • Hoodie_a_front og hoodie_a_back er rebygget fra mockup-arket
+            så front nu har kangaroo-pocket (som forventet) og back er
+            uden pocket. Tidligere var de byttet om.
+          • NY mockup: totebag_front.png + totebag_back.png (SVG-baseret,
+            samme stil som de andre — hvid flade med sorte streger).
+            Tilføjet til AVAILABLE_MOCKUPS-listen.
+          • Brugeren skal selv sætte totebag-kategoriens default-mockup
+            til 'totebag' via SQL eller kategori-modal.
+
+  v1.120c (2026-05-01) — Per-produkt mockup-persistens + bug-fix
+          • BUG-FIX: mockupOverride blev kopieret over til nye produkter
+            i selectGarment via spread (...gl). Nu nulstilles override
+            når et nyt produkt vælges, samme måde som productCategoryOverride.
+          • NY: Supabase-tabel produkt_mockup_overrides (sku → mockup_key)
+            for per-produkt persistens af mockup-valg
+          • Window._mockupOverrides cache (sku → mockup_key) loades ved
+            startup parallelt med _kategoriOverrides
+          • 4-lags lookup ved getEffectiveMockup:
+              1. gl.mockupOverride[posKey] (manuelt valgt på denne linje)
+              2. _mockupOverrides[gl.sku] (gemt i DB)
+              3. getCategoryMockup(catKey, posKey) (kategori-default)
+              4. null (ingen mockup)
+          • UI: "↺ Nulstil"-knap erstattet med 💾 "Gem som standard"-knap
+            (samme mønster som productCategoryOverride). Indikator-tekst
+            viser "manuel variant" / "★ gemt standard" / "kategori-default"
+          • Realtime subscription på produkt_mockup_overrides så ændringer
+            fra én bruger automatisk synker til andre brugere
+          • Anti-self-toast så egne ændringer ikke trigger "kollega"-besked
+
+  v1.120b (2026-05-01) — Fix: kun tøj farves, ikke baggrund
           • Tidligere: hele design-zone-feltet blev farvet med kundens
             tøjfarve (også området uden om tøjet)
           • Nu: lys grå baggrund i feltet (matcher app-bg). Mockup vises
@@ -827,7 +871,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.120b — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.120e — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3034,7 +3078,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.120b
+    v1.120e
   </div>
 </div>
 
@@ -3127,7 +3171,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.120b · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.120e · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -5141,6 +5185,53 @@ function subscribeToKategoriOverridesChanges() {
   }
 }
 
+// v1.120c: Realtime sync af produkt_mockup_overrides
+let _mockupOverridesRealtimeChannel = null;
+function subscribeToMockupOverridesChanges() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb || _mockupOverridesRealtimeChannel) return;
+
+  try {
+    _mockupOverridesRealtimeChannel = sb
+      .channel('produkt-mockup-overrides-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'produkt_mockup_overrides' },
+        (payload) => {
+          const isOwn = _isOwnRecentChange('_mockupOverridesLastSelfChange');
+
+          if (!window._mockupOverrides) window._mockupOverrides = {};
+          if (payload.eventType === 'DELETE') {
+            const sku = payload.old?.sku;
+            if (sku) delete window._mockupOverrides[sku];
+          } else {
+            const row = payload.new;
+            if (row && row.sku && row.mockup_key) {
+              window._mockupOverrides[row.sku] = row.mockup_key;
+            }
+          }
+
+          // Re-render tilbud-linjer hvis quote-panel er aktiv
+          const quotePanel = document.getElementById('panel-quote');
+          if (quotePanel && quotePanel.classList.contains('active')) {
+            if (typeof renderGarmentLines === 'function') renderGarmentLines();
+          }
+
+          // Toast (kun hvis det IKKE er brugerens egen ændring)
+          if (!isOwn) {
+            const evtLabel = payload.eventType === 'INSERT' ? 'tilføjet'
+              : payload.eventType === 'DELETE' ? 'fjernet'
+              : 'opdateret';
+            const sku = (payload.new || payload.old)?.sku || '';
+            showToast('Mockup-mapping ' + evtLabel + (sku ? ' for ' + sku : '') + ' af en kollega', 'success', 3500);
+          }
+        })
+      .subscribe();
+    dbLog('Realtime: lytter på produkt_mockup_overrides-ændringer');
+  } catch (err) {
+    dbLog('subscribeToMockupOverridesChanges fejlede', err.message);
+  }
+}
+
 // Toast-notifikation. type = 'success' | 'warning' | 'error' | 'info'
 function showToast(message, type = 'info', duration = 3000) {
   const container = document.getElementById('toastContainer');
@@ -6144,6 +6235,8 @@ function selectGarment(i,sku) {
     // v1.113: Ryd per-linje kategori-override så det nye produkt kan re-detectes
     // (eller bruge sin gemte _kategoriOverrides-mapping hvis der er en)
     productCategoryOverride: undefined,
+    // v1.120c: Ryd per-linje mockup-override (samme princip som kategori)
+    mockupOverride: undefined,
     selectedColor:'',
     sizeQtys:{}, manualQty:0,
     // Sikr positions-schema overlever (bagudkompatibilitet)
@@ -7042,7 +7135,10 @@ const AVAILABLE_MOCKUPS = [
   { key: 'cargo_pants_b',      label: 'Cargo pants B',                 hasFront: true, hasBack: true },
   { key: 'cap',                label: 'Cap / Beanie',                  hasFront: true, hasBack: true },
   { key: 'vest',               label: 'Vest',                          hasFront: true, hasBack: true },
-  { key: 'balaclava',          label: 'Balaclava',                     hasFront: true, hasBack: true }
+  { key: 'balaclava',          label: 'Balaclava',                     hasFront: true, hasBack: true },
+  { key: 'totebag_a',          label: 'Totebag A (klassisk lang)',     hasFront: true, hasBack: true },
+  { key: 'totebag_b',          label: 'Totebag B (kort/bred shopper)', hasFront: true, hasBack: true },
+  { key: 'totebag_c',          label: 'Totebag C (lang variant)',      hasFront: true, hasBack: true }
 ];
 
 // Hent mockup-key for en kategori+position (fra DB)
@@ -7055,12 +7151,20 @@ function getCategoryMockup(catKey, posKey) {
   return String(pos.mockup);
 }
 
-// Hent effektiv mockup for en gl+position: per-linje override > kategori default
-// gl.mockupOverride = { front: 'tshirt_b', back: 'tshirt_b', sleeve_l: ..., sleeve_r: ... }
+// Hent effektiv mockup for en gl+position: 4-lags lookup
+//   1. per-linje override (gl.mockupOverride[posKey])
+//   2. gemt produkt-override fra DB (_mockupOverrides[gl.sku])
+//   3. kategori-default (getCategoryMockup)
+//   4. null
 function getEffectiveMockup(gl, posKey) {
   if (!gl || !posKey) return null;
-  const override = gl.mockupOverride?.[posKey];
-  if (override) return override;
+  // 1) Per-linje override
+  const lineOverride = gl.mockupOverride?.[posKey];
+  if (lineOverride) return lineOverride;
+  // 2) Gemt produkt-override fra DB
+  const productOverride = (gl.sku && window._mockupOverrides && window._mockupOverrides[gl.sku]) || null;
+  if (productOverride) return productOverride;
+  // 3) Kategori-default
   const catKey = (typeof getProductCategory === 'function') ? getProductCategory(gl) : null;
   return getCategoryMockup(catKey, posKey);
 }
@@ -8133,6 +8237,82 @@ async function loadKategoriOverrides() {
   }
 }
 
+// v1.120c: Load alle gemte mockup-overrides ved app-start
+async function loadMockupOverrides() {
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    dbLog('loadMockupOverrides: Supabase ikke klar');
+    return;
+  }
+  try {
+    const { data, error } = await sb
+      .from('produkt_mockup_overrides')
+      .select('sku, mockup_key');
+    if (error) throw error;
+
+    const map = {};
+    (data || []).forEach(row => {
+      if (row.sku && row.mockup_key) map[row.sku] = row.mockup_key;
+    });
+    window._mockupOverrides = map;
+    dbLog('Mockup-overrides indlæst', Object.keys(map).length + ' produkter');
+  } catch (err) {
+    dbLog('loadMockupOverrides fejlede', err.message);
+    if (!window._mockupOverrides) window._mockupOverrides = {};
+  }
+}
+
+// v1.120c: Gem mockup-override for et produkt (kaldes fra "Gem som standard"-knap på mockup-row)
+async function saveMockupOverride(lineIdx, event) {
+  if (event) event.stopPropagation();
+  const gl = garmentLinesData[lineIdx];
+  if (!gl || !gl.sku) {
+    showToast('Intet produkt valgt', 'error');
+    return;
+  }
+  // Den effektive mockup-key (fra per-linje override)
+  const mockupKey = gl.mockupOverride?.front || gl.mockupOverride?.back;
+  if (!mockupKey) {
+    showToast('Ingen manuel mockup valgt', 'error');
+    return;
+  }
+
+  const sb = (typeof getSB === 'function') ? getSB() : null;
+  if (!sb) {
+    showToast('Supabase ikke klar', 'error');
+    return;
+  }
+
+  const payload = {
+    sku: gl.sku,
+    mockup_key: mockupKey,
+    source: gl.fromSS ? 'stanley' : 'lshop'
+  };
+
+  // Marker self-change så realtime ikke viser "kollega"-toast
+  window._mockupOverridesLastSelfChange = Date.now();
+
+  try {
+    const { error } = await sb
+      .from('produkt_mockup_overrides')
+      .upsert(payload, { onConflict: 'sku' });
+    if (error) throw error;
+
+    // Opdater lokal cache
+    if (!window._mockupOverrides) window._mockupOverrides = {};
+    window._mockupOverrides[gl.sku] = mockupKey;
+
+    // Ryd per-linje override (kommer nu fra DB ved næste lookup)
+    delete gl.mockupOverride;
+
+    showToast('Mockup gemt som standard for ' + (gl.sku || 'produktet'), 'success');
+    renderGarmentLines();
+  } catch (err) {
+    showToast('Fejl ved gem: ' + (err.message || String(err)), 'error');
+    dbLog('saveMockupOverride fejlede', err.message);
+  }
+}
+
 // Gem kategori-override for et produkt (kaldes fra "Gem som standard"-knap)
 async function saveKategoriOverride(lineIdx, event) {
   if (event) event.stopPropagation();
@@ -8608,11 +8788,21 @@ function buildLineTrykSection(i, gl) {
               optionsHtml += '<option value="' + escapeHtml(m.key) + '"' + sel + '>' + escapeHtml(m.label) + '</option>';
             });
           }
-          const isOverride = !!(gl.mockupOverride && gl.mockupOverride.front);
-          const indicator = isOverride
-            ? `<span class="auto-detected">manuel variant</span>
-               <button class="btn-save-kat-default" onclick="resetLineMockup(${i}, event)" title="Nulstil til kategoriens default">↺ Nulstil</button>`
-            : `<span class="auto-detected">kategori-default</span>`;
+          // v1.120c: Tre tilstande analog til kategori-row:
+          //   1. Manuel override (per-linje) → "manuel variant" + 💾 Gem som standard
+          //   2. Gemt DB-override → "★ gemt standard"
+          //   3. Ellers → "kategori-default"
+          const isLineOverride = !!(gl.mockupOverride && (gl.mockupOverride.front || gl.mockupOverride.back));
+          const isDbOverride = !!(gl.sku && window._mockupOverrides && window._mockupOverrides[gl.sku]);
+          let indicator;
+          if (isLineOverride) {
+            indicator = `<span class="auto-detected">manuel variant</span>
+              <button class="btn-save-kat-default" onclick="saveMockupOverride(${i}, event)" title="Gem som standard for ${escapeHtml(gl.sku || 'produktet')}">💾 Gem som standard</button>`;
+          } else if (isDbOverride) {
+            indicator = `<span class="auto-detected kat-source-saved" title="Hentet fra gemt produkt-mockup-mapping">★ gemt standard</span>`;
+          } else {
+            indicator = `<span class="auto-detected">kategori-default</span>`;
+          }
           return `<div class="product-category-row" style="margin-top:6px">
             <label>Mockup:</label>
             <select onchange="setLineMockup(${i}, this.value)">
@@ -10134,7 +10324,7 @@ function onAuthSuccess() {
   // Re-render tøjlinjer når kategorier er klar så dropdown viser kategoriens sizes.
   // v1.113: Hent også per-produkt kategori-overrides parallelt
   // v1.115: Start realtime-subscriptions efter load er færdig
-  Promise.all([loadKategorier(), loadKategoriOverrides()]).then(() => {
+  Promise.all([loadKategorier(), loadKategoriOverrides(), loadMockupOverrides()]).then(() => {
     if (typeof garmentLinesData !== 'undefined' && Array.isArray(garmentLinesData)) {
       garmentLinesData.forEach(gl => migrateGarmentLineSizes(gl));
     }
@@ -10143,6 +10333,7 @@ function onAuthSuccess() {
     // v1.115: Start subscriptions for begge tabeller (sker kun én gang pr. session)
     subscribeToKategorierChanges();
     subscribeToKategoriOverridesChanges();
+    subscribeToMockupOverridesChanges();
   });
   // v1.061: Startsiden er nu Nyt tilbud — sørg for at panel-init køres
   // (renderGarmentLines + recalc) nu hvor panelet allerede har klassen "active"
