@@ -4,12 +4,22 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.127
+  Version: 1.127b
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.127  (2026-05-02)  ⭐ Aktuel — PDF: mockup-billeder INDE I tryk-tabellen
+  v1.127b (2026-05-02)  ⭐ Aktuel — Fix: stripe-position i pris-celler
+          • BUG: Stregen for overstreget original-pris ramte FORKERT linje
+            (rabat-prisen blev overstreget i stedet for original-prisen).
+            Visuelt så det ud som om billig pris var "ikke længere gyldig".
+          • Årsag: Stripe-Y blev beregnet ud fra (cellInnerH/lines.length)
+            men cellHøjden er større end forventet pga. valign/padding.
+          • FIX: Stripe-Y beregnes nu ud fra fontSize × linjehøjde-faktor
+            i stedet for cellens samlede højde. Konsekvent på begge tabeller
+            (tøj-tabel + tryk-tabel).
+
+  v1.127  (2026-05-02) — PDF: mockup-billeder INDE I tryk-tabellen
           • PROBLEM: Mockup-billeder var placeret som separat strip UNDER
             tryk-tabellen, hvilket spildte plads og pressede content
             længere ned på siden.
@@ -1008,7 +1018,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.127 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.127b — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3255,7 +3265,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.127
+    v1.127b
   </div>
 </div>
 
@@ -3348,7 +3358,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.127 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.127b · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -10626,15 +10636,20 @@ async function generateTilbudPDF(mode) {
             }
           }
           // v1.123/v1.125: Stk-pris (5) + Total (6) — overstreg original (linje 1) når rabat aktiv
+          // v1.127b: Stripe-position fixed så den faktisk rammer linje 1
           if (data.section === 'body' && (data.column.index === 5 || data.column.index === 6)) {
             const raw = data.cell.raw;
             if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
               const lines = raw.split('\n');
               if (lines.length >= 2) {
+                // Beregn linje-højde ud fra fontsize i stedet for cell-størrelse
+                // (fontSize 9pt → ~3.18mm linjehøjde i jsPDF)
+                const fontSizeMm = (data.cell.styles?.fontSize || 9) * 0.353;
+                const lineHeight = fontSizeMm * 1.15;
                 const padTop = data.cell.padding('top');
-                const cellInnerH = data.cell.height - padTop - data.cell.padding('bottom');
-                const lineH = cellInnerH / lines.length;
-                const firstLineMidY = data.cell.y + padTop + lineH / 2;
+                // Linje 1 er midten ved padTop + ~0.5*lineHeight (baseline-justering)
+                // Y-position for stripe gennem midten af linje 1:
+                const firstLineMidY = data.cell.y + padTop + lineHeight * 0.5;
                 const padRight = data.cell.padding('right');
                 const textRightX = data.cell.x + data.cell.width - padRight;
                 const firstLineWidth = doc.getTextWidth(lines[0]);
@@ -10785,16 +10800,16 @@ async function generateTilbudPDF(mode) {
                   }
                 }
               }
-              // v1.123: Overstreg original-pris-linje hvis cellen har 2 linjer
+              // v1.123/v1.127b: Overstreg original-pris-linje hvis cellen har 2 linjer
               if (data.section === 'body' && data.column.index === 2) {
                 const raw = data.cell.raw;
                 if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
                   const lines = raw.split('\n');
                   if (lines.length >= 2) {
+                    const fontSizeMm = (data.cell.styles?.fontSize || 9) * 0.353;
+                    const lineHeight = fontSizeMm * 1.15;
                     const padTop = data.cell.padding('top');
-                    const cellInnerH = data.cell.height - padTop - data.cell.padding('bottom');
-                    const lineH = cellInnerH / lines.length;
-                    const firstLineMidY = data.cell.y + padTop + lineH / 2;
+                    const firstLineMidY = data.cell.y + padTop + lineHeight * 0.5;
                     const padRight = data.cell.padding('right');
                     const textRightX = data.cell.x + data.cell.width - padRight;
                     const firstLineWidth = doc.getTextWidth(lines[0]);
