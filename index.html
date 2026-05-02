@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.124
+  Version: 1.125
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.124  (2026-05-01)  ⭐ Aktuel — PDF-fejl-fixes
+  v1.125  (2026-05-02)  ⭐ Aktuel — PDF tøj-tabel: lodrette størrelser + bredere Total
+          • PROBLEM: Total-kolonne for smal til store tal som "24.836,00 kr",
+            klemte tekst sammen til 3-linjer. Især problematisk når
+            rabat-priser er 2-linjet (overstreget original + rabat).
+          • LØSNING: Inspireret af ShirtDesign.dk's tilbud-layout:
+            - Størrelser vises lodret (S × 70\nM × 70\nL × 70) i stedet
+              for vandret med kommaer (S:70, M:70, L:70). Komprimerer
+              kolonnen fra 38mm til 28mm bredde.
+            - Total-kolonnen udvidet til 30mm (kan nu vise lange tal)
+            - Stk-pris-kolonnen udvidet til 22mm (bedre til 2-linje rabat)
+            - Total-antal-linje under størrelses-listen
+          • Bredder summeret: 38+22+22+8+28+22+30 = 170mm A4 ✅
+
+  v1.124  (2026-05-01) — PDF-fejl-fixes
           • FIX: "Mængderabat 30.0%" linjen brugte Unicode-minus (U+2212)
             som ikke er i jsPDF's helvetica-font. Skiftet til ASCII '-'
             så fonten ikke fallback'er til en grim glyph.
@@ -957,7 +970,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.124 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.125 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3204,7 +3217,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.124
+    v1.125
   </div>
 </div>
 
@@ -3297,7 +3310,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.124 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.125 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -10095,24 +10108,35 @@ async function generateTilbudPDF(mode) {
     // v1.119: description-tekst (salgstekst) under produktnavn hvis tilgængelig
     // v1.123: Hvis rabat aktiv (discPct > 0), vis original-stk-pris og total
     //         overstreget på første linje + rabat-pris fed på næste linje
+    // v1.125: Størrelser lodret (S × 70\nM × 70...) + Total-antal under
     const _discPct = d.discPct || 0;
     const tøjRows = d.clothesLines.map(cl => {
       const stkPriceDisc = cl.salePrice * (1 - _discPct/100);
       const totalDisc = cl.total * (1 - _discPct/100);
-      // Format: "200,00 kr\n180,00 kr" — vi tegner stikket i didDrawCell
       const stkPriceCell = (_discPct > 0)
         ? fmtKr(cl.salePrice) + '\n' + fmtKr(stkPriceDisc)
         : fmtKr(cl.salePrice);
       const totalCell = (_discPct > 0)
         ? fmtKr(cl.total) + '\n' + fmtKr(totalDisc)
         : fmtKr(cl.total);
+      // v1.125: Lodret størrelses-liste (en pr. linje) + Total nederst
+      let sizesCell = '—';
+      if (cl.sizeBreakdown && cl.sizeBreakdown.length > 0) {
+        const sizeLines = cl.sizeBreakdown
+          .filter(b => b.qty > 0)
+          .map(b => `${b.size} × ${b.qty}`);
+        sizeLines.push(`Total: ${cl.qty}`);
+        sizesCell = sizeLines.join('\n');
+      } else if (cl.sizes) {
+        // Fallback: split kommaseparerede til lodret
+        sizesCell = cl.sizes.split(/,\s*/).join('\n') + '\nTotal: ' + cl.qty;
+      }
       return [
         cl.description ? cl.name + '\n' + cl.description : cl.name,
         cl.sku || '—',
-        cl.sizes || '—',
         cl.farve || '—',
-        '',                    // tom celle — fyldes via didDrawCell med farve-swatch
-        String(cl.qty),
+        '',                    // swatch-kolonne (fyldes via didDrawCell)
+        sizesCell,
         stkPriceCell,
         totalCell
       ];
@@ -10125,7 +10149,7 @@ async function generateTilbudPDF(mode) {
       const descriptionByRow = d.clothesLines.map(cl => cl.description || '');
       doc.autoTable({
         startY: y,
-        head: [['Produkt', 'SKU', 'Størrelser', 'Farve', '', 'Antal', 'Stk-pris', 'Total']],
+        head: [['Produkt', 'SKU', 'Farve', '', 'Størrelser', 'Stk-pris', 'Total']],
         body: tøjRows,
         theme: 'plain',
         styles: {
@@ -10143,17 +10167,15 @@ async function generateTilbudPDF(mode) {
           lineWidth: {bottom: 0.3},
         },
         columnStyles: {
-          // v1.124: Eksplicitte bredder så Stk-pris/Total ikke crasher
-          // når de indeholder 2 linjer (rabat-pris). Total-bredde = 170mm
-          // (210mm side - 2x20mm margin).
-          0: { cellWidth: 38, valign: 'top' },  // Produkt (m. description under)
+          // v1.125: Nye bredder - Antal-kolonne fjernet, indlejret i Størrelser-celle
+          // Total: 38+22+22+8+28+22+30 = 170mm A4 ✅
+          0: { cellWidth: 38, valign: 'top' },                              // Produkt (m. description)
           1: { cellWidth: 22, font: 'courier', fontSize: 8, valign: 'top' }, // SKU
-          2: { cellWidth: 38, fontSize: 8, valign: 'top' }, // Størrelser
-          3: { cellWidth: 22, valign: 'top' }, // Farve
-          4: { cellWidth: 8, valign: 'top' },  // swatch
-          5: { cellWidth: 12, halign: 'right', valign: 'top' }, // Antal
-          6: { cellWidth: 16, halign: 'right', valign: 'top' }, // Stk-pris
-          7: { cellWidth: 18, halign: 'right', valign: 'top' }, // Total
+          2: { cellWidth: 22, valign: 'top' },                              // Farve
+          3: { cellWidth: 8, valign: 'top' },                               // swatch
+          4: { cellWidth: 28, fontSize: 8, valign: 'top' },                 // Størrelser (lodret + Total)
+          5: { cellWidth: 22, halign: 'right', valign: 'top' },             // Stk-pris
+          6: { cellWidth: 30, halign: 'right', valign: 'top' },             // Total
         },
         margin: { left: margin, right: margin },
         // v1.119: Skjul description-linjen så den ikke tegnes med almindelig farve
@@ -10177,11 +10199,11 @@ async function generateTilbudPDF(mode) {
             }
           }
         },
-        // v1.104: Tegn farve-swatch i swatch-kolonnen (index 4)
+        // v1.104: Tegn farve-swatch i swatch-kolonnen (index 3 i v1.125)
         // v1.119: Tegn description som lille grå tekst i Produkt-cellen (index 0)
-        // v1.123: Overstreg original-pris i Stk-pris (6) og Total (7) ved rabat
+        // v1.123: Overstreg original-pris i Stk-pris (5) og Total (6) ved rabat
         didDrawCell: function(data) {
-          if (data.section === 'body' && data.column.index === 4) {
+          if (data.section === 'body' && data.column.index === 3) {
             const hex = farveHexByRow[data.row.index];
             const rgb = hexToRgb(hex);
             if (rgb) {
@@ -10204,41 +10226,52 @@ async function generateTilbudPDF(mode) {
               doc.setFont('helvetica', 'italic');
               doc.setFontSize(7);
               doc.setTextColor(...PDF_COLORS.muted);
-              // Position: under navne-linjen i samme celle
               const tx = data.cell.x + (data.cell.padding('left'));
-              const ty = data.cell.y + data.cell.padding('top') + 7.5; // ~under navnet
+              const ty = data.cell.y + data.cell.padding('top') + 7.5;
               const maxW = data.cell.width - 2 * (data.cell.padding('left') || 0);
               const lines = doc.splitTextToSize(desc, maxW);
               doc.text(lines, tx, ty);
-              // Reset til standard
               doc.setFont('helvetica', 'normal');
               doc.setFontSize(9);
               doc.setTextColor(...PDF_COLORS.text);
             }
           }
-          // v1.123: Stk-pris (6) + Total (7) — overstreg original (linje 1) når rabat aktiv
-          if (data.section === 'body' && (data.column.index === 6 || data.column.index === 7)) {
+          // v1.123/v1.125: Stk-pris (5) + Total (6) — overstreg original (linje 1) når rabat aktiv
+          if (data.section === 'body' && (data.column.index === 5 || data.column.index === 6)) {
             const raw = data.cell.raw;
-            // Tjek om cellen indeholder 2 linjer (original\nrabat-pris)
             if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
               const lines = raw.split('\n');
               if (lines.length >= 2) {
-                // Tegn vandret streg gennem første linje (original-pris)
-                // Position: ~midten af første linje vertikalt
                 const padTop = data.cell.padding('top');
                 const cellInnerH = data.cell.height - padTop - data.cell.padding('bottom');
-                // Antag 2 linjer fylder cellen ligeligt
                 const lineH = cellInnerH / lines.length;
                 const firstLineMidY = data.cell.y + padTop + lineH / 2;
-                // Beregn x-position af første linje (højrejusteret tekst)
                 const padRight = data.cell.padding('right');
                 const textRightX = data.cell.x + data.cell.width - padRight;
-                // Få tekst-bredde for første linje
                 const firstLineWidth = doc.getTextWidth(lines[0]);
                 const stripeStartX = textRightX - firstLineWidth;
                 doc.setDrawColor(...PDF_COLORS.muted);
                 doc.setLineWidth(0.3);
                 doc.line(stripeStartX, firstLineMidY, textRightX, firstLineMidY);
+              }
+            }
+          }
+          // v1.125: Total-linjen i størrelses-celle (4) - lille fed-tekst
+          if (data.section === 'body' && data.column.index === 4) {
+            const raw = data.cell.raw;
+            if (typeof raw === 'string' && raw.indexOf('Total:') > -1) {
+              // Tegn en tynd linje over "Total: XXX" så den fremstår tydeligere
+              const lines = raw.split('\n');
+              const totalLineIdx = lines.findIndex(l => l.startsWith('Total:'));
+              if (totalLineIdx > 0) {
+                const padTop = data.cell.padding('top');
+                const cellInnerH = data.cell.height - padTop - data.cell.padding('bottom');
+                const lineH = cellInnerH / lines.length;
+                const lineY = data.cell.y + padTop + (totalLineIdx * lineH) - 0.5;
+                const padX = data.cell.padding('left');
+                doc.setDrawColor(...PDF_COLORS.border);
+                doc.setLineWidth(0.2);
+                doc.line(data.cell.x + padX, lineY, data.cell.x + data.cell.width - padX, lineY);
               }
             }
           }
