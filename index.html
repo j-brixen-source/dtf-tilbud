@@ -4,12 +4,20 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.127b
+  Version: 1.127c
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.127b (2026-05-02)  ⭐ Aktuel — Fix: stripe-position i pris-celler
+  v1.127c (2026-05-02)  ⭐ Aktuel — Fix: stripe i tryk-tabel ramte heller ikke
+          • Tøj-tabel virkede efter v1.127b, men tryk-tabel havde stadig
+            forkert stripe-position fordi Total-kolonnen har valign:'middle'.
+            Det betyder tekst centreres vertikalt i den 28mm høje celle
+            (pga. mockup-billedet), så stripe-Y skal beregnes anderledes.
+          • FIX: Stripe-koden tager nu højde for valign-værdien (top/middle/
+            bottom) og beregner faktisk tekst-startposition derfra.
+
+  v1.127b (2026-05-02) — Fix: stripe-position i pris-celler
           • BUG: Stregen for overstreget original-pris ramte FORKERT linje
             (rabat-prisen blev overstreget i stedet for original-prisen).
             Visuelt så det ud som om billig pris var "ikke længere gyldig".
@@ -1018,7 +1026,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.127b — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.127c — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3265,7 +3273,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.127b
+    v1.127c
   </div>
 </div>
 
@@ -3358,7 +3366,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.127b · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.127c · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -10800,7 +10808,9 @@ async function generateTilbudPDF(mode) {
                   }
                 }
               }
-              // v1.123/v1.127b: Overstreg original-pris-linje hvis cellen har 2 linjer
+              // v1.123/v1.127b/v1.127c: Overstreg original-pris-linje hvis cellen har 2 linjer
+              // Total-kolonnen i tryk-tabel har valign:'middle' så tekst er centreret
+              // vertikalt — vi skal finde den faktiske tekst-position, ikke bare bruge padTop
               if (data.section === 'body' && data.column.index === 2) {
                 const raw = data.cell.raw;
                 if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
@@ -10809,7 +10819,22 @@ async function generateTilbudPDF(mode) {
                     const fontSizeMm = (data.cell.styles?.fontSize || 9) * 0.353;
                     const lineHeight = fontSizeMm * 1.15;
                     const padTop = data.cell.padding('top');
-                    const firstLineMidY = data.cell.y + padTop + lineHeight * 0.5;
+                    const padBot = data.cell.padding('bottom');
+                    const cellInnerH = data.cell.height - padTop - padBot;
+                    const totalTextH = lines.length * lineHeight;
+                    // For valign='middle': tekst starter ved padTop + (cellInnerH - totalTextH) / 2
+                    // For valign='top': tekst starter ved padTop
+                    const valign = data.cell.styles?.valign || 'top';
+                    let textStartY;
+                    if (valign === 'middle') {
+                      textStartY = data.cell.y + padTop + (cellInnerH - totalTextH) / 2;
+                    } else if (valign === 'bottom') {
+                      textStartY = data.cell.y + data.cell.height - padBot - totalTextH;
+                    } else {
+                      textStartY = data.cell.y + padTop;
+                    }
+                    // Stripe gennem midten af første linje
+                    const firstLineMidY = textStartY + lineHeight * 0.5;
                     const padRight = data.cell.padding('right');
                     const textRightX = data.cell.x + data.cell.width - padRight;
                     const firstLineWidth = doc.getTextWidth(lines[0]);
