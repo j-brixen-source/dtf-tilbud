@@ -4,12 +4,30 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.125
+  Version: 1.126
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.125  (2026-05-02)  ⭐ Aktuel — PDF tøj-tabel: lodrette størrelser + bredere Total
+  v1.126  (2026-05-02)  ⭐ Aktuel — PDF detalje-sider per produkt + trykmetode-system
+          • NY: Detalje-side per produktlinje i tilbud + ordreseddel-PDF
+            inspireret af ShirtDesign.dk's layout. Indeholder:
+              - Stort front-mockup (med farve) + back-mockup hvis brugt
+              - Størrelse/Antal-fordeling + tekstilfarve-swatch
+              - Salgstekst (description) hvis tilgængelig
+              - Per design uploaded: filnavn, mål (B×H i cm),
+                side (FRONT/BACK/V/H), område (kategori+størrelse),
+                trykmetode
+          • NY: Trykmetode-datamodel (fremtidssikret til DTF + Direkte tryk)
+              - PRINT_METHODS-konstant: array af { key, label, prisModifier }
+              - Per linje: gl.printMethod (default: 'dtf')
+              - Indstillinger: vælg standard trykmetode pr. tilbud
+              - Datamodel klar til pris-modificering pr. metode (kommer
+                når priser er fastsat for Direkte tryk)
+          • Datamodel for design udvidet med tracking af original-filnavn
+            (fra upload) hvis tilgængelig
+
+  v1.125  (2026-05-02) — PDF tøj-tabel: lodrette størrelser + bredere Total
           • PROBLEM: Total-kolonne for smal til store tal som "24.836,00 kr",
             klemte tekst sammen til 3-linjer. Især problematisk når
             rabat-priser er 2-linjet (overstreget original + rabat).
@@ -970,7 +988,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.125 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.126 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3217,7 +3235,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.125
+    v1.126
   </div>
 </div>
 
@@ -3310,7 +3328,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.125 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.126 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -3966,6 +3984,8 @@ function defaultGarmentLine() {
     designs: {
       front: null, back: null, sleeve_l: null, sleeve_r: null
     },
+    // v1.126: Trykmetode pr. linje. null = brug global selectedPrintMethod
+    printMethod: null,
     trykExpanded: true
   };
 }
@@ -7855,6 +7875,304 @@ async function pdfRenderDesignsForLines(doc, garmentLines, startY, margin) {
   return y + 2;
 }
 
+// ════════════════════════════════════════════════════════════════════
+// v1.126: Detalje-sider per produkt-linje (inspireret af ShirtDesign.dk)
+// Hver produkt-linje får sin egen side med:
+//  - Stort front-mockup (med farve) + back-mockup hvis brugt
+//  - Størrelse/Antal-fordeling + tekstilfarve-swatch
+//  - Salgstekst (description) hvis tilgængelig
+//  - Per design uploaded: filnavn, mål, side, område, trykmetode
+// ════════════════════════════════════════════════════════════════════
+async function pdfRenderProductDetailPages(doc, garmentLines, margin, isOrdre) {
+  const POS_LABEL = {
+    front:    'FRONT',
+    back:     'BACK',
+    sleeve_l: 'V. ÆRME',
+    sleeve_r: 'H. ÆRME'
+  };
+  const POS_AREA = {
+    front:    'Front',
+    back:     'Back',
+    sleeve_l: 'Venstre ærme',
+    sleeve_r: 'Højre ærme'
+  };
+
+  for (let li = 0; li < garmentLines.length; li++) {
+    const gl = garmentLines[li];
+    if (!gl || !gl.sku) continue;  // skip tomme linjer
+
+    // Ny side per produkt
+    doc.addPage();
+    let y = margin;
+    const pageW = doc.internal.pageSize.getWidth();
+    const contentW = pageW - 2 * margin;
+
+    // ── Top: Produktnavn + SKU
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(14);
+    doc.setTextColor(...PDF_COLORS.text);
+    doc.text(gl.sku || '—', margin, y);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(11);
+    doc.text(gl.name || '', margin + 30, y);
+    y += 6;
+
+    // Skille-linje
+    doc.setDrawColor(...PDF_COLORS.border);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y, pageW - margin, y);
+    y += 8;
+
+    // ── Layout: 2 kolonner — venstre = mockups, højre = info
+    const leftW = 75;   // mockups-kolonne
+    const rightX = margin + leftW + 10;
+    const rightW = contentW - leftW - 10;
+
+    // Hvilke positioner skal vises (kun aktive med designs eller positions)
+    const showPositions = ['front','back','sleeve_l','sleeve_r'].filter(p =>
+      gl.positions?.[p]?.active || gl.designs?.[p]
+    );
+
+    // ── Venstre: Mockups (front + back stablet)
+    let mockupY = y;
+    const mockupSize = 60;  // 60mm bred
+    for (const p of ['front','back']) {  // kun front/back på venstre, sleeves under
+      if (!showPositions.includes(p)) continue;
+      // Tegn mockup
+      try {
+        const dataUrl = await renderDesignMockup(gl, p, mockupSize * 4, mockupSize * 4);
+        if (dataUrl) {
+          // Label
+          doc.setFont('helvetica','bold');
+          doc.setFontSize(9);
+          doc.setTextColor(...PDF_COLORS.muted);
+          doc.text(POS_LABEL[p] || p.toUpperCase(), margin + mockupSize/2, mockupY, {align:'center'});
+          // Mockup-billede (samme størrelse i bredde og højde — kvadratisk render)
+          doc.addImage(dataUrl, 'PNG', margin, mockupY + 2, mockupSize, mockupSize, undefined, 'FAST');
+          mockupY += mockupSize + 6;
+        }
+      } catch(err) {
+        if (typeof dbLog === 'function') dbLog('detail-page mockup-fejl', err.message);
+      }
+    }
+
+    // ── Højre kolonne: Produkt-info
+    let infoY = y;
+
+    // Størrelse / Antal
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...PDF_COLORS.text);
+    doc.text('Størrelse / Antal', rightX, infoY);
+    infoY += 5;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    let totalQty = 0;
+    Object.entries(gl.sizeQtys || {}).forEach(([size, qty]) => {
+      const q = +qty || 0;
+      if (q > 0) {
+        doc.text(`${size} × ${q}`, rightX, infoY);
+        infoY += 4;
+        totalQty += q;
+      }
+    });
+    if (totalQty > 0) {
+      doc.setFont('helvetica','bold');
+      doc.text(`Total: ${totalQty}`, rightX, infoY);
+      infoY += 5;
+      doc.setFont('helvetica','normal');
+    }
+    infoY += 3;
+
+    // Tekstilfarve med swatch
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.text('Tekstilfarve', rightX, infoY);
+    infoY += 5;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    if (gl.selectedColor) {
+      const farveHex = gl.colorHexMap?.[gl.selectedColor] ||
+                       (typeof SS_COLOR_HEX !== 'undefined' ? SS_COLOR_HEX[gl.selectedColor] : '') || '#888';
+      const rgb = hexToRgb(farveHex);
+      if (rgb) {
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.setDrawColor(...PDF_COLORS.border);
+        doc.setLineWidth(0.2);
+        doc.rect(rightX, infoY - 3, 5, 4, 'FD');
+      }
+      doc.text(gl.selectedColor, rightX + 7, infoY);
+      infoY += 6;
+    } else {
+      doc.text('(ingen valgt)', rightX, infoY);
+      infoY += 6;
+    }
+    infoY += 2;
+
+    // Trykmetode
+    const printMethod = (typeof getLinePrintMethod === 'function') ? getLinePrintMethod(gl) : { label: 'DTF' };
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.text('Trykmetode', rightX, infoY);
+    infoY += 5;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.text(printMethod.label, rightX, infoY);
+    infoY += 7;
+
+    // Produktbeskrivelse (salgstekst)
+    const desc = (typeof getMeaningfulDescription === 'function') ? getMeaningfulDescription(gl) : null;
+    if (desc) {
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(10);
+      doc.text('Produktbeskrivelse', rightX, infoY);
+      infoY += 5;
+      doc.setFont('helvetica','italic');
+      doc.setFontSize(8);
+      doc.setTextColor(...PDF_COLORS.muted);
+      const lines = doc.splitTextToSize(desc, rightW);
+      // Tegn maks 12 linjer for at undgå overflow
+      const maxLines = Math.min(lines.length, 12);
+      for (let i = 0; i < maxLines; i++) {
+        doc.text(lines[i], rightX, infoY);
+        infoY += 4;
+      }
+      doc.setTextColor(...PDF_COLORS.text);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(9);
+      infoY += 3;
+    }
+
+    // Sleeve-mockups (under hovedindholdet)
+    let belowY = Math.max(mockupY, infoY) + 5;
+    const sleevePositions = showPositions.filter(p => p === 'sleeve_l' || p === 'sleeve_r');
+    if (sleevePositions.length > 0) {
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(9);
+      doc.setTextColor(...PDF_COLORS.muted);
+      const sleeveSize = 35;
+      const sleeveSpacing = 8;
+      let sx = margin;
+      for (const p of sleevePositions) {
+        try {
+          const dataUrl = await renderDesignMockup(gl, p, sleeveSize * 4, sleeveSize * 4);
+          if (dataUrl) {
+            doc.text(POS_LABEL[p] || p.toUpperCase(), sx + sleeveSize/2, belowY, {align:'center'});
+            doc.addImage(dataUrl, 'PNG', sx, belowY + 2, sleeveSize, sleeveSize, undefined, 'FAST');
+            sx += sleeveSize + sleeveSpacing;
+          }
+        } catch(err) { /* ignore */ }
+      }
+      belowY += sleeveSize + 8;
+    }
+
+    // ── Sektion: Grafik brugt til [produkt]
+    let grafY = belowY;
+    const pageH = doc.internal.pageSize.getHeight();
+
+    if (showPositions.some(p => gl.designs?.[p])) {
+      // Page-break check
+      if (grafY > pageH - 60) {
+        doc.addPage();
+        grafY = margin;
+      }
+      doc.setDrawColor(...PDF_COLORS.border);
+      doc.setLineWidth(0.3);
+      doc.line(margin, grafY, pageW - margin, grafY);
+      grafY += 6;
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_COLORS.text);
+      doc.text(`Grafik brugt til ${gl.sku || gl.name}`, margin, grafY);
+      grafY += 8;
+
+      // Per design: thumbnail venstre, info højre
+      for (const p of showPositions) {
+        const design = gl.designs?.[p];
+        if (!design) continue;
+
+        const thumbSize = 35;
+        // Page-break hvis ikke plads til thumbnail + info
+        if (grafY + thumbSize + 5 > pageH - 25) {
+          doc.addPage();
+          grafY = margin;
+        }
+
+        // Thumbnail
+        try {
+          if (design.url) {
+            doc.addImage(design.url, undefined, margin, grafY, thumbSize, thumbSize, undefined, 'FAST');
+            // Border
+            doc.setDrawColor(...PDF_COLORS.border);
+            doc.setLineWidth(0.2);
+            doc.rect(margin, grafY, thumbSize, thumbSize);
+          }
+        } catch(err) {
+          // Manglende thumbnail - tegn placeholder
+          doc.setFillColor(245, 245, 245);
+          doc.rect(margin, grafY, thumbSize, thumbSize, 'F');
+        }
+
+        // Info ved siden af thumbnail
+        const infoX = margin + thumbSize + 6;
+        let dY = grafY + 4;
+        const labelColor = PDF_COLORS.muted;
+        const valueColor = PDF_COLORS.text;
+
+        function drawLabel(label, value) {
+          doc.setFont('helvetica','bold');
+          doc.setFontSize(8);
+          doc.setTextColor(...labelColor);
+          doc.text(label, infoX, dY);
+          doc.setFont('helvetica','normal');
+          doc.setFontSize(9);
+          doc.setTextColor(...valueColor);
+          doc.text(value || '—', infoX + 25, dY);
+          dY += 4.5;
+        }
+
+        // Filnavn
+        drawLabel('Grafik:', design.filename || design.name || '(uden navn)');
+
+        // Mål — brug sizeLock hvis aktiv, ellers beregn fra scalePercent
+        const _catKey = (typeof getProductCategory === 'function') ? getProductCategory(gl) : null;
+        const posSize = gl.positions?.[p]?.size ||
+                        (typeof getCategoryFirstSizeName === 'function' ? getCategoryFirstSizeName(_catKey, p) : null);
+        const dimCm = (typeof getTrykDimensions === 'function') ? getTrykDimensions(_catKey, p, posSize) : null;
+        let dimText = '—';
+        if (design && dimCm && typeof design.scalePercent === 'number') {
+          let sw, sh;
+          if (design.sizeLock && typeof design.sizeLock.w === 'number') {
+            sw = design.sizeLock.w;
+            sh = design.sizeLock.h;
+          } else {
+            const sc = design.scalePercent / 100;
+            sw = (dimCm.w * sc);
+            sh = (dimCm.h * sc);
+          }
+          const fmt = (n) => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.',',');
+          dimText = `${fmt(sw)} × ${fmt(sh)} cm`;
+        }
+        drawLabel('Størrelse:', dimText);
+
+        // Side
+        drawLabel('Side:', POS_LABEL[p] || p);
+
+        // Område: kategori + størrelse
+        const areaText = posSize ? `${POS_AREA[p] || p} ${posSize}` : (POS_AREA[p] || p);
+        drawLabel('Område:', areaText);
+
+        // Trykmetode
+        drawLabel('Trykmetode:', printMethod.label);
+
+        // Næste design - skub y ned forbi thumbnail
+        grafY += thumbSize + 6;
+      }
+    }
+  }
+}
+// ════════════════════════════════════════════════════════════════════
+
 // v1.101: Render mockups for ÉN tøjlinje. Bruges af både tilbud-PDF (per-linje)
 // og af pdfRenderDesignsForLines (samlet). 50% mindre end v1.100 så de ikke fylder så meget.
 async function pdfRenderMockupsForOneLine(doc, gl, startY, margin) {
@@ -9565,7 +9883,55 @@ function confirmMissingItems() {
 // PRODUKTIONSTID
 // ══════════════════════════════════════════════════════════════
 
-let selectedProdTime = 'standard';
+// ══════════════════════════════════════════════════════════════
+// v1.126: Trykmetode-system
+// Fremtidssikret datamodel - per nu kun DTF, men struktur er klar
+// til at tilføje 'Direkte tryk' og evt. broderi/serigrafi når
+// priserne er fastsat.
+// ══════════════════════════════════════════════════════════════
+
+const PRINT_METHODS = [
+  {
+    key: 'dtf',
+    label: 'DTF',
+    description: 'Direct-To-Film transfer-tryk',
+    // Pris-modifier: 1.0 = standard pris (kommer i fremtidig version)
+    priceMultiplier: 1.0
+  },
+  // Fremtidige metoder - tilføj her når priser er klar:
+  // { key: 'direct', label: 'Direkte tryk', priceMultiplier: ?.? },
+  // { key: 'screen', label: 'Serigrafi',    priceMultiplier: ?.? },
+  // { key: 'embroidery', label: 'Broderi',  priceMultiplier: ?.? },
+];
+
+function getPrintMethod(key) {
+  return PRINT_METHODS.find(m => m.key === key) || PRINT_METHODS[0];
+}
+
+function getPrintMethodLabel(key) {
+  return getPrintMethod(key).label;
+}
+
+// Default trykmetode for tilbuddet (kan overskrives per produkt-linje)
+let selectedPrintMethod = localStorage.getItem('selected_print_method') || 'dtf';
+
+function setSelectedPrintMethod(key) {
+  if (!PRINT_METHODS.find(m => m.key === key)) return;
+  selectedPrintMethod = key;
+  localStorage.setItem('selected_print_method', key);
+}
+
+// Hent trykmetode for en produkt-linje (per-linje override > global default)
+function getLinePrintMethod(gl) {
+  const key = gl?.printMethod || selectedPrintMethod || 'dtf';
+  return getPrintMethod(key);
+}
+
+// ══════════════════════════════════════════════════════════════
+// Slut trykmetode
+// ══════════════════════════════════════════════════════════════
+
+
 
 function getProdTimeConfig() {
   // Læs fra localStorage eller brug standard
@@ -10518,6 +10884,10 @@ async function generateTilbudPDF(mode) {
     });
 
     // v1.124: Footer på alle sider (ikke kun side 1)
+    // v1.126: Detalje-sider per produkt-linje TILFØJES før footer-rendering
+    //         (så footer-loop også dækker dem)
+    await pdfRenderProductDetailPages(doc, garmentLinesData, margin, isOrdre);
+
     const totalPages = doc.internal.getNumberOfPages();
     for (let p = 1; p <= totalPages; p++) {
       doc.setPage(p);
