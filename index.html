@@ -4,12 +4,26 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.123
+  Version: 1.124
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.123  (2026-05-01)  ⭐ Aktuel — Original-pris (overstreget) ved rabat + PDF tryk-mål
+  v1.124  (2026-05-01)  ⭐ Aktuel — PDF-fejl-fixes
+          • FIX: "Mængderabat 30.0%" linjen brugte Unicode-minus (U+2212)
+            som ikke er i jsPDF's helvetica-font. Skiftet til ASCII '-'
+            så fonten ikke fallback'er til en grim glyph.
+          • FIX: Page-break check før BETINGELSER blokken så den ikke
+            løber ind i footeren i bunden af siden.
+          • FIX: Tøj-tabel kolonne-bredder defineret eksplicit så
+            Stk-pris og Total ikke crasher når de indeholder 2 linjer
+            (overstreget original + rabat-pris fra v1.123).
+          • FIX: Produktnavn-celle har nu større minWidth + bottom-padding
+            så SKU-feltet ikke ligger ovenpå navnet.
+          • NY: "Produktion: X hverdage (færdig DD/MM/YYYY)"-tekst
+            under Dato/Gyldig-til når produktionstid er valgt.
+
+  v1.123  (2026-05-01) — Original-pris (overstreget) ved rabat + PDF tryk-mål
           • Når mængderabat er aktiv (discPct > 0) vises både original-pris
             (overstreget, lille, grå) og rabat-pris (normal/fed) overalt:
               - UI prisoversigt: tekstil-linjer, tryk-linjer, stk-priser
@@ -943,7 +957,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.123 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.124 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3190,7 +3204,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.123
+    v1.124
   </div>
 </div>
 
@@ -3283,7 +3297,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.123 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.124 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -10037,10 +10051,11 @@ async function generateTilbudPDF(mode) {
       doc.setFontSize(8);
       doc.setTextColor(...PDF_COLORS.muted);
       doc.text('Gyldig til: '+gyldigTil, 120, ky+5);
-      // Leveringsdato hvis prodtime er sat
+      // v1.124: Produktion + leveringsdato samlet (i stedet for kun "Leveringsdato")
       const calcRes = recalc();
-      if(calcRes.prodTimeData?.dato) {
-        doc.text('Leveringsdato: '+formatDate(calcRes.prodTimeData.dato), 120, ky+10);
+      if(calcRes.prodTimeData?.dato && calcRes.prodTimeData?.dage) {
+        doc.text(`Produktion: ${calcRes.prodTimeData.dage} hverdage`, 120, ky+10);
+        doc.text(`Færdig: ${formatDate(calcRes.prodTimeData.dato)}`, 120, ky+14);
       }
       doc.setFontSize(10);
       doc.setTextColor(...PDF_COLORS.text);
@@ -10059,6 +10074,17 @@ async function generateTilbudPDF(mode) {
     } else {
       doc.text('(Ingen kunde valgt)', margin, y);
       doc.text(dato, 120, y);
+      // v1.124: Også vis produktion uden kunde
+      const calcRes = recalc();
+      if(calcRes.prodTimeData?.dato && calcRes.prodTimeData?.dage) {
+        doc.setFontSize(8);
+        doc.setTextColor(...PDF_COLORS.muted);
+        doc.text(`Produktion: ${calcRes.prodTimeData.dage} hverdage`, 120, y+5);
+        doc.text(`Færdig: ${formatDate(calcRes.prodTimeData.dato)}`, 120, y+9);
+        doc.setFontSize(10);
+        doc.setTextColor(...PDF_COLORS.text);
+        y += 9; // skub mere ned
+      }
       y += 5;
     }
 
@@ -10117,15 +10143,22 @@ async function generateTilbudPDF(mode) {
           lineWidth: {bottom: 0.3},
         },
         columnStyles: {
-          1: { font: 'courier', fontSize: 8 },
-          4: { cellWidth: 10 },           // swatch-kolonnen — smal
-          5: { halign: 'right' },         // Antal
-          6: { halign: 'right' },         // Stk-pris
-          7: { halign: 'right' },         // Total
+          // v1.124: Eksplicitte bredder så Stk-pris/Total ikke crasher
+          // når de indeholder 2 linjer (rabat-pris). Total-bredde = 170mm
+          // (210mm side - 2x20mm margin).
+          0: { cellWidth: 38, valign: 'top' },  // Produkt (m. description under)
+          1: { cellWidth: 22, font: 'courier', fontSize: 8, valign: 'top' }, // SKU
+          2: { cellWidth: 38, fontSize: 8, valign: 'top' }, // Størrelser
+          3: { cellWidth: 22, valign: 'top' }, // Farve
+          4: { cellWidth: 8, valign: 'top' },  // swatch
+          5: { cellWidth: 12, halign: 'right', valign: 'top' }, // Antal
+          6: { cellWidth: 16, halign: 'right', valign: 'top' }, // Stk-pris
+          7: { cellWidth: 18, halign: 'right', valign: 'top' }, // Total
         },
         margin: { left: margin, right: margin },
         // v1.119: Skjul description-linjen så den ikke tegnes med almindelig farve
         // Vi tegner den selv via didDrawCell med mindre + grå tekst
+        // v1.124: Sæt minimum cellHøjde så description ikke kollapser med næste række
         willDrawCell: function(data) {
           if (data.section === 'body' && data.column.index === 0) {
             const desc = descriptionByRow[data.row.index];
@@ -10133,6 +10166,14 @@ async function generateTilbudPDF(mode) {
               // Sæt cellens tekst-content til kun navn (uden description)
               // og tegn description selv bagefter
               data.cell.text = [data.cell.raw.split('\n')[0]];
+              // v1.124: Reservér plads til description-linjen i celle-højden
+              // Beregn antal description-linjer baseret på tekst-bredde
+              const maxW = data.cell.width - 8;
+              const lines = doc.splitTextToSize(desc, maxW);
+              const descHeight = lines.length * 3.2; // ~3.2mm per linje ved 7pt
+              if (data.row.height < 14 + descHeight) {
+                data.row.height = 14 + descHeight;
+              }
             }
           }
         },
@@ -10395,7 +10436,8 @@ async function generateTilbudPDF(mode) {
     if(d.clothesDisc + d.printDisc > 0) {
       doc.setTextColor(...PDF_COLORS.muted);
       doc.text(`Mængderabat ${d.discPct.toFixed(1)}%`, 120, y);
-      doc.text('−' + fmtKr((d.clothesDisc + d.printDisc)), 210-margin, y, {align:'right'});
+      // v1.124: ASCII '-' i stedet for Unicode '−' (U+2212) der ikke er i jsPDF helvetica
+      doc.text('-' + fmtKr((d.clothesDisc + d.printDisc)), 210-margin, y, {align:'right'});
       y += 5;
     }
 
@@ -10414,6 +10456,15 @@ async function generateTilbudPDF(mode) {
     y += 12;
 
     // ── Noter / betingelser ──
+    // v1.124: Page-break check så blokken ikke løber ind i footeren
+    const noterCount = 4;
+    const blokHøjde = 5 + (noterCount * 4.5) + 4; // header + linjer + buffer
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const footerY = pageHeight - 18; // se pdfFooter
+    if (y + blokHøjde > footerY) {
+      doc.addPage();
+      y = margin;
+    }
     doc.setFont('helvetica','bold');
     doc.setFontSize(9);
     doc.setTextColor(...PDF_COLORS.muted);
@@ -10433,7 +10484,12 @@ async function generateTilbudPDF(mode) {
       y += 4.5;
     });
 
-    pdfFooter(doc, 1, 1);
+    // v1.124: Footer på alle sider (ikke kun side 1)
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      pdfFooter(doc, p, totalPages);
+    }
 
     // v1.118: Filnavn afhænger af mode ('Tilbud_xxx' eller 'Ordre_xxx')
     const _prefix = isOrdre ? 'Ordre' : 'Tilbud';
