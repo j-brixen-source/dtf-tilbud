@@ -4,12 +4,19 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.126
+  Version: 1.126b
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.126  (2026-05-02)  ⭐ Aktuel — PDF detalje-sider per produkt + trykmetode-system
+  v1.126b (2026-05-02)  ⭐ Aktuel — Hotfix: ReferenceError selectedProdTime
+          • BUG: I v1.126 blev "let selectedProdTime = 'standard';" fjernet
+            ved en fejl da PRINT_METHODS-system blev tilføjet på samme
+            sted. Resultat: appen kastede "Can't find variable: selectedProdTime"
+            ved upload eller anden interaktion der kalder recalc().
+          • FIX: Variablen er genindsat på samme sted som tidligere.
+
+  v1.126   (2026-05-02) — PDF detalje-sider per produkt + trykmetode-system
           • NY: Detalje-side per produktlinje i tilbud + ordreseddel-PDF
             inspireret af ShirtDesign.dk's layout. Indeholder:
               - Stort front-mockup (med farve) + back-mockup hvis brugt
@@ -988,7 +995,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.126 — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.126b — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3235,7 +3242,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.126
+    v1.126b
   </div>
 </div>
 
@@ -3328,7 +3335,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.126 · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.126b · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -9882,6 +9889,9 @@ function confirmMissingItems() {
 // ══════════════════════════════════════════════════════════════
 // PRODUKTIONSTID
 // ══════════════════════════════════════════════════════════════
+
+// v1.126b: selectedProdTime var fejlagtigt fjernet i v1.126 - genindsat her
+let selectedProdTime = 'standard';
 
 // ══════════════════════════════════════════════════════════════
 // v1.126: Trykmetode-system
