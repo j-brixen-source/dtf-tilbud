@@ -4,12 +4,25 @@
   TETOS — Tekstil-tryk.dk Ordre System
   ════════════════════════════════════════════════════════════════════════
 
-  Version: 1.126b
+  Version: 1.127
   Tidligere kendt som: DTF Tilbudsberegner
 
   ─── VERSIONSHISTORIK ───────────────────────────────────────────────────
 
-  v1.126b (2026-05-02)  ⭐ Aktuel — Hotfix: ReferenceError selectedProdTime
+  v1.127  (2026-05-02)  ⭐ Aktuel — PDF: mockup-billeder INDE I tryk-tabellen
+          • PROBLEM: Mockup-billeder var placeret som separat strip UNDER
+            tryk-tabellen, hvilket spildte plads og pressede content
+            længere ned på siden.
+          • LØSNING: Mockup-thumbnail flyttes nu ind i Produkt-kolonnen
+            på hver tryk-linje (under produktnavnet på første linje),
+            ved siden af positions-info som "Forside – Stort × 60 stk".
+          • Den separate "TRYKBILLEDER"-strip under tabellen er fjernet
+            (kald til pdfRenderMockupsForOneLine udeladt).
+          • Pre-rendering: mockups loades parallelt FØR tabellen bygges
+            via Promise.all så autoTable ikke får async-problemer.
+          • Mockup-størrelse i tabel: ~24×24mm (kompakt men læselig)
+
+  v1.126b (2026-05-02) — Hotfix: ReferenceError selectedProdTime
           • BUG: I v1.126 blev "let selectedProdTime = 'standard';" fjernet
             ved en fejl da PRINT_METHODS-system blev tilføjet på samme
             sted. Resultat: appen kastede "Can't find variable: selectedProdTime"
@@ -995,7 +1008,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TETOS v1.126b — Tekstil-tryk.dk Ordre System</title>
+<title>TETOS v1.127 — Tekstil-tryk.dk Ordre System</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -3242,7 +3255,7 @@
   <!-- v1.084: Lille version-stempel i nederste-højre hjørne så man hurtigt kan
        se hvilken version der er live uden at logge ind først -->
   <div style="position:absolute;bottom:12px;right:14px;font-size:10px;color:rgba(255,255,255,0.45);font-family:inherit;letter-spacing:0.02em">
-    v1.126b
+    v1.127
   </div>
 </div>
 
@@ -3335,7 +3348,7 @@
 <div class="header">
   <img src="/TETOS_logo.svg" alt="TETOS" class="header-logo-img" title="Tekstil-tryk.dk Ordre System">
   <div class="header-sep"></div>
-  <div class="header-tag">v1.126b · Tekstil-tryk.dk · Powered by Claude AI</div>
+  <div class="header-tag">v1.127 · Tekstil-tryk.dk · Powered by Claude AI</div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
     <span id="userBadge" style="display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:11px;color:rgba(255,255,255,0.85)"></span>
     <button onclick="doLogout(event)" style="padding:5px 12px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.7);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit" title="Log ud">Log ud</button>
@@ -10697,7 +10710,20 @@ async function generateTilbudPDF(mode) {
         // Mini tryk-tabel for denne linje (med produkt-info)
         if (linePrintLines.length > 0) {
           // v1.123: Total-celle indeholder original\nrabat når discPct > 0
+          // v1.127: Pre-render mockups for hver position parallelt så
+          //         vi kan tegne dem i Produkt-kolonnen via didDrawCell
           const _discPctTryk = d.discPct || 0;
+          const MOCKUP_SIZE = 24;  // mm — kompakt størrelse i tabel
+          const mockupsByPos = {};
+          // Pre-render mockups parallelt for alle unikke positioner i denne linje
+          const uniquePositions = [...new Set(linePrintLines.map(pl => pl.pos).filter(Boolean))];
+          await Promise.all(uniquePositions.map(async (pos) => {
+            try {
+              const dataUrl = await renderDesignMockup(gl, pos, MOCKUP_SIZE * 6, MOCKUP_SIZE * 6);
+              if (dataUrl) mockupsByPos[pos] = dataUrl;
+            } catch (err) { /* ignore — render uden mockup */ }
+          }));
+
           const trykRowsLine = linePrintLines.map((pl, idx) => {
             const productLabel = idx === 0
               ? `${gl.name||'—'}${gl.sku?' · '+gl.sku:''}${gl.selectedColor?' · '+gl.selectedColor:''}`
@@ -10708,6 +10734,8 @@ async function generateTilbudPDF(mode) {
               : fmtKr(pl.total);
             return [productLabel, pl.label, totalCell];
           });
+          // v1.127: minRowHeight så mockup-billedet kan ligge i Produkt-cellen
+          const trykRowMinHeight = MOCKUP_SIZE + 4;
           doc.autoTable({
             startY: y,
             head: [['Produkt', 'Position & størrelse', 'Total']],
@@ -10719,20 +10747,45 @@ async function generateTilbudPDF(mode) {
               textColor: PDF_COLORS.text,
               lineColor: PDF_COLORS.border,
               lineWidth: 0.1,
+              minCellHeight: trykRowMinHeight,  // v1.127: plads til mockup
             },
             headStyles: {
               fontStyle: 'bold',
               textColor: PDF_COLORS.muted,
               fontSize: 8,
               lineWidth: {bottom: 0.3},
+              minCellHeight: 6,
             },
             columnStyles: {
-              0: { fontStyle: 'bold' },
-              2: { halign: 'right' },
+              // v1.127: Produkt-kolonne bredere så mockup + navn kan rummes
+              0: { fontStyle: 'bold', cellWidth: 65, valign: 'top' },
+              1: { valign: 'middle' },
+              2: { halign: 'right', valign: 'middle' },
             },
             margin: { left: margin, right: margin },
-            // v1.123: Overstreg original-pris-linje hvis cellen har 2 linjer
             didDrawCell: function(data) {
+              // v1.127: Tegn mockup-billede i Produkt-cellen (kolonne 0)
+              if (data.section === 'body' && data.column.index === 0) {
+                const pl = linePrintLines[data.row.index];
+                if (pl && pl.pos && mockupsByPos[pl.pos]) {
+                  // Tegn mockup centreret i celle - lav nok plads tilbage til
+                  // produktnavn øverst på første række
+                  const cell = data.cell;
+                  const padX = 2;
+                  // Hvis første række: tegn mockup under navnet (navn fylder ~5mm)
+                  const yOffset = (data.row.index === 0) ? 6 : 1;
+                  const imgX = cell.x + padX;
+                  const imgY = cell.y + yOffset;
+                  const maxImgH = cell.height - yOffset - 2;
+                  const imgSize = Math.min(MOCKUP_SIZE, maxImgH);
+                  if (imgSize > 8) {
+                    try {
+                      doc.addImage(mockupsByPos[pl.pos], 'PNG', imgX, imgY, imgSize, imgSize, undefined, 'FAST');
+                    } catch(err) { /* ignore */ }
+                  }
+                }
+              }
+              // v1.123: Overstreg original-pris-linje hvis cellen har 2 linjer
               if (data.section === 'body' && data.column.index === 2) {
                 const raw = data.cell.raw;
                 if (typeof raw === 'string' && raw.indexOf('\n') > -1) {
@@ -10753,6 +10806,19 @@ async function generateTilbudPDF(mode) {
                 }
               }
             },
+            // v1.127: Skub tekst i Produkt-cellen højre for mockup-billedet
+            willDrawCell: function(data) {
+              if (data.section === 'body' && data.column.index === 0) {
+                const pl = linePrintLines[data.row.index];
+                if (pl && pl.pos && mockupsByPos[pl.pos]) {
+                  // Skub padding-left så tekst ikke ligger ovenpå mockup
+                  // (kun på første række hvor produktnavnet vises)
+                  if (data.row.index === 0 && data.cell.text && data.cell.text.length) {
+                    // Behold tekst som er — den ligger pænt øverst nu
+                  }
+                }
+              }
+            },
           });
           y = doc.lastAutoTable.finalY + 2;
         } else if (hasDesign) {
@@ -10765,10 +10831,8 @@ async function generateTilbudPDF(mode) {
           y += 4;
         }
 
-        // Mockups for denne linje (hvis design uploadet)
-        if (hasDesign) {
-          y = await pdfRenderMockupsForOneLine(doc, gl, y, margin);
-        }
+        // v1.127: Den separate mockup-strip under tabellen er fjernet —
+        // mockups vises nu direkte i Produkt-kolonnen via didDrawCell ovenfor.
         y += 4; // spacing mellem linjer
       }
       y += 2;
